@@ -161,7 +161,7 @@ class ShipGenerator(Generator):
                 annotations['bboxes'] = np.array([[min(_x1,_x2,_x3,_x4),min(_y1,_y2,_y3,_y4),
                                           max(_x1,_x2,_x3,_x4),max(_y1,_y2,_y3,_y4)]
                                          for _x1,_x2,_x3,_x4,_y1,_y2,_y3,_y4 in zip(x1,x2,x3,x4,y1,y2,y3,y4)]) 
-                annotations['labels'] = self.mylist[image_index]['image/object/class/label'].values.numpy()
+                annotations['labels'] = self.mylist[image_index]['image/object/class/label'].values.numpy()-1
                 
         return annotations
     

@@ -254,24 +254,12 @@ def check_args(parsed_args):
     if parsed_args.gpu and parsed_args.batch_size < len(parsed_args.gpu.split(',')):
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
-                                                                                             parsed_args.multi_gpu))
-<<<<<<< HEAD
-    print(parsed_args.snapshot)
-    if parsed_args.num_gpus > 1 and parsed_args.snapshot:
-        raise ValueError(
-            "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
-                                                                                                parsed_args.snapshot))
-
-    if parsed_args.num_gpus > 1 and not parsed_args.multi_gpu_force:
-        raise ValueError(
-            "Multi-GPU support is experimental, use at own risk! Run with --multi-gpu-force if you wish to continue.")
-=======
-
+                                                                                             len(parsed_args.gpu.split(','))))
     # if parsed_args.num_gpus > 1 and parsed_args.snapshot:
     #     raise ValueError(
     #         "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
     #                                                                                             parsed_args.snapshot))
->>>>>>> upstream/master
+
 
     return parsed_args
 
@@ -353,57 +341,49 @@ def main(args=None):
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     tf.compat.v1.keras.backend.set_session(get_session())
-
-<<<<<<< HEAD
-    # create the generators
-    train_generator, validation_generator = create_generators(args)
-
-    num_classes = train_generator.num_classes()
-    num_anchors = train_generator.num_anchors
+    
     if args.detect_ship == True : 
         anchor_parameters=AnchorParameters.ship
     else : 
         anchor_parameters=None
-        
-=======
->>>>>>> upstream/master
-    model, prediction_model = efficientdet(args.phi,
-                                           num_classes=num_classes,
-                                           num_anchors=num_anchors,
-                                           weighted_bifpn=args.weighted_bifpn,
-                                           freeze_bn=args.freeze_bn,
-                                           detect_quadrangle=args.detect_quadrangle,
-                                           anchor_parameters=anchor_parameters
-                                           )
-    # load pretrained weights
-    if args.snapshot:
-        if args.snapshot == 'imagenet':
-            model_name = 'efficientnet-b{}'.format(args.phi)
-            file_name = '{}_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'.format(model_name)
-            file_hash = WEIGHTS_HASHES[model_name][1]
-            weights_path = keras.utils.get_file(file_name,
-                                                BASE_WEIGHTS_PATH + file_name,
-                                                cache_subdir='models',
-                                                file_hash=file_hash)
-            model.load_weights(weights_path, by_name=True)
-        else:
-            print('Loading model, this may take a second...')
-            model.load_weights(args.snapshot, by_name=True)
+    
+    devices=["/gpu:{}".format(i) for i in args.gpu.split(',')] 
+    mirrored_strategy = tf.distribute.MirroredStrategy(devices=devices)
+    with mirrored_strategy.scope():
+        model, prediction_model = efficientdet(args.phi,
+                                               num_classes=num_classes,
+                                               num_anchors=num_anchors,
+                                               weighted_bifpn=args.weighted_bifpn,
+                                               freeze_bn=args.freeze_bn,
+                                               detect_quadrangle=args.detect_quadrangle,
+                                               anchor_parameters=anchor_parameters
+                                               )
+        # load pretrained weights
+        if args.snapshot:
+            if args.snapshot == 'imagenet':
+                model_name = 'efficientnet-b{}'.format(args.phi)
+                file_name = '{}_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'.format(model_name)
+                file_hash = WEIGHTS_HASHES[model_name][1]
+                weights_path = keras.utils.get_file(file_name,
+                                                    BASE_WEIGHTS_PATH + file_name,
+                                                    cache_subdir='models',
+                                                    file_hash=file_hash)
+                model.load_weights(weights_path, by_name=True)
+            else:
+                print('Loading model, this may take a second...')
+                model.load_weights(args.snapshot, by_name=True)
 
-    # freeze backbone layers
-    if args.freeze_backbone:
-        # 227, 329, 329, 374, 464, 566, 656
-        for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
-            model.layers[i].trainable = False
+        # freeze backbone layers
+        if args.freeze_backbone:
+            # 227, 329, 329, 374, 464, 566, 656
+            for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
+                model.layers[i].trainable = False
 
-    if args.gpu and len(args.gpu.split(',')) > 1:
-        model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
-
-    # compile model
-    model.compile(optimizer=Adam(lr=1e-3), loss={
-        'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
-        'classification': focal()
-    }, )
+        # compile model
+        model.compile(optimizer=Adam(lr=1e-3), loss={
+            'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
+            'classification': focal()
+        }, )
 
     # print(model.summary())
 

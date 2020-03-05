@@ -251,10 +251,11 @@ def check_args(parsed_args):
         parsed_args
     """
 
-    if parsed_args.num_gpus > 1 and parsed_args.batch_size < parsed_args.num_gpus:
+    if parsed_args.gpu and parsed_args.batch_size < len(parsed_args.gpu.split(',')):
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
                                                                                              parsed_args.multi_gpu))
+<<<<<<< HEAD
     print(parsed_args.snapshot)
     if parsed_args.num_gpus > 1 and parsed_args.snapshot:
         raise ValueError(
@@ -264,6 +265,13 @@ def check_args(parsed_args):
     if parsed_args.num_gpus > 1 and not parsed_args.multi_gpu_force:
         raise ValueError(
             "Multi-GPU support is experimental, use at own risk! Run with --multi-gpu-force if you wish to continue.")
+=======
+
+    # if parsed_args.num_gpus > 1 and parsed_args.snapshot:
+    #     raise ValueError(
+    #         "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
+    #                                                                                             parsed_args.snapshot))
+>>>>>>> upstream/master
 
     return parsed_args
 
@@ -305,9 +313,6 @@ def parse_args(args):
     parser.add_argument('--batch-size', help='Size of the batches.', default=1, type=int)
     parser.add_argument('--phi', help='Hyper parameter phi', default=0, type=int, choices=(0, 1, 2, 3, 4, 5, 6))
     parser.add_argument('--gpu', help='Id of the GPU to use (as reported by nvidia-smi).')
-    parser.add_argument('--num_gpus', help='Number of GPUs to use for parallel processing.', type=int, default=0)
-    parser.add_argument('--multi-gpu-force', help='Extra flag needed to enable (experimental) multi-gpu support.',
-                        action='store_true')
     parser.add_argument('--epochs', help='Number of epochs to train.', type=int, default=50)
     parser.add_argument('--steps', help='Number of steps per epoch.', type=int, default=10000)
     parser.add_argument('--snapshot-path',
@@ -337,12 +342,19 @@ def main(args=None):
         args = sys.argv[1:]
     args = parse_args(args)
 
+    # create the generators
+    train_generator, validation_generator = create_generators(args)
+
+    num_classes = train_generator.num_classes()
+    num_anchors = train_generator.num_anchors
+
     # optionally choose specific GPU
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     tf.compat.v1.keras.backend.set_session(get_session())
 
+<<<<<<< HEAD
     # create the generators
     train_generator, validation_generator = create_generators(args)
 
@@ -353,6 +365,8 @@ def main(args=None):
     else : 
         anchor_parameters=None
         
+=======
+>>>>>>> upstream/master
     model, prediction_model = efficientdet(args.phi,
                                            num_classes=num_classes,
                                            num_anchors=num_anchors,
@@ -361,7 +375,6 @@ def main(args=None):
                                            detect_quadrangle=args.detect_quadrangle,
                                            anchor_parameters=anchor_parameters
                                            )
-
     # load pretrained weights
     if args.snapshot:
         if args.snapshot == 'imagenet':
@@ -382,6 +395,9 @@ def main(args=None):
         # 227, 329, 329, 374, 464, 566, 656
         for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
             model.layers[i].trainable = False
+
+    if args.gpu and len(args.gpu.split(',')) > 1:
+        model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
 
     # compile model
     model.compile(optimizer=Adam(lr=1e-3), loss={

@@ -91,11 +91,11 @@ class Evaluate(keras.callbacks.Callback):
 
         if self.tensorboard is not None and self.tensorboard.writer is not None:
             import tensorflow as tf
-            summary = tf.Summary()
+            summary = tf.compat.v1.Summary()
             summary_value = summary.value.add()
             summary_value.simple_value = self.mean_ap
             summary_value.tag = "mAP"
-            self.tensorboard.writer.add_summary(summary, epoch)
+            #self.tensorboard.writer.add_summary(summary, epoch)
 
         logs['mAP'] = self.mean_ap
 

@@ -1,3 +1,4 @@
+#-*- coding: future_fstrings -*-
 """
 Copyright 2017-2018 Fizyr (https://fizyr.com)
 
@@ -13,7 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
+# -*- coding: future_fstrings -*-
+    
 import argparse
 from datetime import date
 import os
@@ -34,6 +36,7 @@ from augmentor.misc import MiscEffect
 from model import efficientdet
 from losses import smooth_l1, focal, smooth_l1_quad
 from efficientnet import BASE_WEIGHTS_PATH, WEIGHTS_HASHES
+from utils.anchors import AnchorParameters
 
 
 def makedirs(path):
@@ -51,9 +54,9 @@ def get_session():
     """
     Construct a modified tf session.
     """
-    config = tf.ConfigProto()
+    config =  tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
-    return tf.Session(config=config)
+    return tf.compat.v1.InteractiveSession(config=config)
 
 
 def create_callbacks(training_model, prediction_model, validation_generator, args):
@@ -74,7 +77,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     tensorboard_callback = None
 
     if args.tensorboard_dir:
-        tensorboard_callback = keras.callbacks.TensorBoard(
+        tensorboard_callback = tf.compat.v1.keras.callbacks.TensorBoard(
             log_dir=args.tensorboard_dir,
             histogram_freq=0,
             batch_size=args.batch_size,
@@ -140,6 +143,7 @@ def create_generators(args):
         'batch_size': args.batch_size,
         'phi': args.phi,
         'detect_text': args.detect_text,
+        'detect_ship': args.detect_ship,
         'detect_quadrangle': args.detect_quadrangle
     }
 
@@ -206,6 +210,28 @@ def create_generators(args):
             shuffle_groups=False,
             **common_args
         )
+    elif args.dataset_type == 'ship':
+        # import here to prevent unnecessary dependency on cocoapi
+        from generators.ship import ShipGenerator
+        train_generator = ShipGenerator(
+            'train/ship_detection',
+            args.ship_path,
+            gen_type='train',
+            ratio = args.train_ratio,
+            misc_effect=misc_effect,
+            visual_effect=visual_effect,
+            group_method='random',
+            **common_args
+        )
+
+        validation_generator = ShipGenerator(
+            'val/ship_detection',
+            args.ship_path,
+            gen_type='val',
+            ratio = 1-args.train_ratio,
+            shuffle_groups=False,
+            **common_args
+        )
     else:
         raise ValueError('Invalid data type received: {}'.format(args.dataset_type))
 
@@ -229,7 +255,7 @@ def check_args(parsed_args):
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
                                                                                              parsed_args.multi_gpu))
-
+    print(parsed_args.snapshot)
     if parsed_args.num_gpus > 1 and parsed_args.snapshot:
         raise ValueError(
             "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
@@ -262,8 +288,14 @@ def parse_args(args):
     csv_parser.add_argument('classes_path', help='Path to a CSV file containing class label mapping.')
     csv_parser.add_argument('--val-annotations-path',
                             help='Path to CSV file containing annotations for validation (optional).')
+    
+    ship_parser = subparsers.add_parser('ship')
+    ship_parser.add_argument('ship_path', help='Path to CSV file containing annotations for training.')
+    ship_parser.add_argument('train_ratio', help='train raitio' , type=float, default=1.0)
+        
     parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
     parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
+    parser.add_argument('--detect-ship', help='If is ship detection task.', action='store_true', default=False)
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
@@ -309,19 +341,25 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    K.set_session(get_session())
+    tf.compat.v1.keras.backend.set_session(get_session())
 
     # create the generators
     train_generator, validation_generator = create_generators(args)
 
     num_classes = train_generator.num_classes()
     num_anchors = train_generator.num_anchors
+    if args.detect_ship == True : 
+        anchor_parameters=AnchorParameters.ship
+    else : 
+        anchor_parameters=None
+        
     model, prediction_model = efficientdet(args.phi,
                                            num_classes=num_classes,
                                            num_anchors=num_anchors,
                                            weighted_bifpn=args.weighted_bifpn,
                                            freeze_bn=args.freeze_bn,
-                                           detect_quadrangle=args.detect_quadrangle
+                                           detect_quadrangle=args.detect_quadrangle,
+                                           anchor_parameters=anchor_parameters
                                            )
 
     # load pretrained weights

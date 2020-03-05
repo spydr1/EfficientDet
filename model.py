@@ -1,3 +1,4 @@
+#-*- coding: future_fstrings -*-
 from functools import reduce
 
 # from keras import layers
@@ -5,7 +6,7 @@ from functools import reduce
 # from keras import models
 # from keras_ import EfficientNetB0, EfficientNetB1, EfficientNetB2
 # from keras_ import EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNetB6
-
+import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import initializers
 from tensorflow.keras import models
@@ -26,7 +27,7 @@ backbones = [EfficientNetB0, EfficientNetB1, EfficientNetB2,
 def DepthwiseConvBlock(kernel_size, strides, name, freeze_bn=False):
     f1 = layers.DepthwiseConv2D(kernel_size=kernel_size, strides=strides, padding='same',
                                 use_bias=False, name='{}_dconv'.format(name))
-    f2 = BatchNormalization(freeze=freeze_bn, name='{}_bn'.format(name))
+    f2 = layers.BatchNormalization(trainable=not freeze_bn, name='{}_bn'.format(name))
     f3 = layers.ReLU(name='{}_relu'.format(name))
     return reduce(lambda f, g: lambda *args, **kwargs: g(f(*args, **kwargs)), (f1, f2, f3))
 
@@ -34,7 +35,7 @@ def DepthwiseConvBlock(kernel_size, strides, name, freeze_bn=False):
 def ConvBlock(num_channels, kernel_size, strides, name, freeze_bn=False):
     f1 = layers.Conv2D(num_channels, kernel_size=kernel_size, strides=strides, padding='same',
                        use_bias=False, name='{}_conv'.format(name))
-    f2 = BatchNormalization(freeze=freeze_bn, name='{}_bn'.format(name))
+    f2 = layers.BatchNormalization(trainable=not freeze_bn, name='{}_bn'.format(name))
     f3 = layers.ReLU(name='{}_relu'.format(name))
     return reduce(lambda f, g: lambda *args, **kwargs: g(f(*args, **kwargs)), (f1, f2, f3))
 
@@ -223,7 +224,7 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
     # input_shape = (None, None, 3)
-    image_input = layers.Input(input_shape)
+    image_input = layers.Input(input_shape,dtype=tf.float32)
     w_bifpn = w_bifpns[phi]
     d_bifpn = 2 + phi
     w_head = w_bifpn
@@ -266,6 +267,6 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
             name='filtered_detections',
             score_threshold=score_threshold
         )([boxes, classification])
-
+    print(np.shape(detections))
     prediction_model = models.Model(inputs=[image_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model

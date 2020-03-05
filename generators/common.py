@@ -3,7 +3,6 @@ import random
 import warnings
 import cv2
 from tensorflow import keras
-
 from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters
 
 
@@ -22,6 +21,7 @@ class Generator(keras.utils.Sequence):
             group_method='ratio',  # one of 'none', 'random', 'ratio'
             shuffle_groups=True,
             detect_text=False,
+            detect_ship=False,
             detect_quadrangle=False,
     ):
         """
@@ -39,12 +39,21 @@ class Generator(keras.utils.Sequence):
         self.group_method = group_method
         self.shuffle_groups = shuffle_groups
         self.detect_text = detect_text
+        self.detect_ship = detect_ship
         self.detect_quadrangle = detect_quadrangle
         self.image_size = image_sizes[phi]
         self.groups = None
-        self.anchor_parameters = AnchorParameters.default if not self.detect_text else AnchorParameters(
+        
+        
+        if self.detect_text :
+            self.anchor_parameters = AnchorParameters(
             ratios=(0.25, 0.5, 1., 2.),
             sizes=(16, 32, 64, 128, 256))
+        elif self.detect_ship:
+            self.anchor_parameters = AnchorParameters.ship
+        else: 
+            self.anchor_parameters = AnchorParameters.default
+            
         self.anchors = anchors_for_shape((self.image_size, self.image_size), anchor_params=self.anchor_parameters)
         self.num_anchors = self.anchor_parameters.num_anchors()
 

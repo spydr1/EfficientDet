@@ -1,0 +1,1 @@
+python3 train.py --snapshot=imagenet --detect-quadrangle --detect-ship --phi=1 --gpu=0 --random-transform --compute-val-loss --freeze-backbone --batch-size=2 --steps=1000 ship '/home/minjun/Jupyter/Ship_Detection/Data/train_tfrecorder/train_data.tfrecords' 0.8

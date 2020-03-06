@@ -1,5 +1,5 @@
-#import sys
-#sys.path.append('../')
+import sys
+sys.path.append('../')
 from generators.common import Generator
 import os
 import numpy as np

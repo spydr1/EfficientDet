@@ -20,7 +20,7 @@ from datetime import date
 import os
 import sys
 import tensorflow as tf
-#tf.compat.v1.disable_eager_execution()
+tf.compat.v1.disable_eager_execution()
 # import keras
 # import keras.preprocessing.image
 # import keras.backend as K

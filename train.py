@@ -54,6 +54,7 @@ def get_session():
     """
     config =  tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
+    config.allow_soft_placement=True
     return tf.compat.v1.InteractiveSession(config=config)
 
 
@@ -376,7 +377,8 @@ def main(args=None):
         for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
             model.layers[i].trainable = False
     if args.gpu and len(args.gpu.split(',')) > 1:
-        model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
+        #model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
+        model = keras.utils.multi_gpu_model(model, gpus=7)
 
     # compile model
     model.compile(optimizer=Adam(lr=1e-3), loss={

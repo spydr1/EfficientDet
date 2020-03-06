@@ -377,8 +377,8 @@ def main(args=None):
         # 227, 329, 329, 374, 464, 566, 656
         for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
             model.layers[i].trainable = False
-    if args.gpu and len(args.gpu.split(',')) > 1:
-        model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
+    #if args.gpu and len(args.gpu.split(',')) > 1:
+    #    model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
 
     # compile model
     model.compile(optimizer=Adam(lr=1e-3), loss={
@@ -402,8 +402,8 @@ def main(args=None):
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
 
     
-    return model.fit(
-        x=train_generator,
+    return model.fit_generator(
+        train_generator,
         steps_per_epoch=args.steps,
         initial_epoch=0,
         epochs=args.epochs,

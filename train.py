@@ -403,7 +403,7 @@ def main(args=None):
 
     
     return model.fit_generator(
-        train_generator,
+        generator=train_generator,
         steps_per_epoch=args.steps,
         initial_epoch=0,
         epochs=args.epochs,

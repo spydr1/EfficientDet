@@ -267,6 +267,5 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
             name='filtered_detections',
             score_threshold=score_threshold
         )([boxes, classification])
-    print(np.shape(detections))
     prediction_model = models.Model(inputs=[image_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model

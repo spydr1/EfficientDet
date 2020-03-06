@@ -20,7 +20,7 @@ from datetime import date
 import os
 import sys
 import tensorflow as tf
-
+#tf.compat.v1.disable_eager_execution()
 # import keras
 # import keras.preprocessing.image
 # import keras.backend as K
@@ -47,15 +47,14 @@ def makedirs(path):
     except OSError:
         if not os.path.isdir(path):
             raise
-
-
+            
 def get_session():
     """
     Construct a modified tf session.
     """
-    config =  tf.compat.v1.ConfigProto()
+    config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-    return tf.compat.v1.InteractiveSession(config=config)
+    return tf.Session(config=config)
 
 
 def create_callbacks(training_model, prediction_model, validation_generator, args):
@@ -76,10 +75,9 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     tensorboard_callback = None
 
     if args.tensorboard_dir:
-        tensorboard_callback = tf.compat.v1.keras.callbacks.TensorBoard(
+        tensorboard_callback = keras.callbacks.TensorBoard(
             log_dir=args.tensorboard_dir,
             histogram_freq=0,
-            batch_size=args.batch_size,
             write_graph=True,
             write_grads=False,
             write_images=False,
@@ -339,8 +337,8 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    tf.compat.v1.keras.backend.set_session(get_session())
-    
+    K.set_session(get_session())
+
     if args.detect_ship == True : 
         anchor_parameters=AnchorParameters.ship
     else : 
@@ -393,7 +391,7 @@ def main(args=None):
         model,
         prediction_model,
         validation_generator,
-        args,
+        args
     )
 
     if not args.compute_val_loss:
@@ -402,8 +400,8 @@ def main(args=None):
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
 
     
-    return model.fit(
-        x=train_generator,
+    return model.fit_generator(
+        generator=train_generator,
         steps_per_epoch=args.steps,
         initial_epoch=0,
         epochs=args.epochs,
@@ -414,6 +412,9 @@ def main(args=None):
         max_queue_size=args.max_queue_size,
         validation_data=validation_generator
     )
+
+#validation_data=validation_generator
+
 
 
 if __name__ == '__main__':

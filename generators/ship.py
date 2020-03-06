@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import tensorflow as tf
 import IPython.display as display
-
+tf.compat.v1.disable_eager_execution()
 
 filenames='/home/minjun/Jupyter/Ship_Detection/Data/train_tfrecorder/train_data.tfrecords'
 ship_classes = {
@@ -32,8 +32,13 @@ image_feature_description  = {
     'image/object/y4': tf.io.VarLenFeature(tf.float32),
     'image/object/class/text': tf.io.VarLenFeature(tf.string),
     'image/object/class/label': tf.io.VarLenFeature(tf.int64),
-
 }
+
+example = tf.train.Example()
+def _features (record):    
+    example.ParseFromString(record)
+    f = example.features.feature
+    return dict(f.items())
 
 def _parse_image_function(example_proto):
   # Parse the input tf.Example proto using the dictionary above.
@@ -62,9 +67,7 @@ class ShipGenerator(Generator):
         self.data_dir = data_dir
         self.set_name = set_name
         self.classes = classes
-        raw_image_dataset = tf.data.TFRecordDataset(data_dir)
-        parsed_image_dataset = raw_image_dataset.map(_parse_image_function)
-        self.mylist = np.array(list(parsed_image_dataset))
+        self.mylist = np.array(np.array(list(map(_features,tf.compat.v1.io.tf_record_iterator(data_dir)))))
         self.length = self.mylist.shape[0]
         if gen_type == 'train' :
             self.mylist= self.mylist[:int(ratio*self.length)]
@@ -124,7 +127,7 @@ class ShipGenerator(Generator):
         """
         Load an image at the image_index.
         """
-        encoded_image = self.mylist[image_index]['image/encoded']
+        encoded_image = self.mylist[image_index]['image/encoded'].bytes_list.value[0]
         image = tf.io.decode_image(encoded_image).numpy()
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
@@ -135,23 +138,23 @@ class ShipGenerator(Generator):
         Load annotations for an image_index.
         """
         image_index = image_index[0] if type(image_index)==list else image_index
-        length = len(self.mylist[image_index]['image/object/class/label'].values.numpy()) 
+        length = len(self.mylist[image_index]['image/object/class/label'].int64_list.value) 
         annotations = {'labels': np.empty((length,), dtype=np.int32),
                        'bboxes': np.empty((length, 4), dtype=np.float32),
                        'quadrangles': np.empty((length, 4, 2), dtype=np.float32),
                        }
         for annot in self.mylist[image_index]:
             if self.detect_quadrangle: 
-                width, height = self.mylist[image_index]['image/width'].numpy(),self.mylist[image_index]['image/height'].numpy(), 
+                width, height = self.mylist[image_index]['image/width'].int64_list.value[0],self.mylist[image_index]['image/height'].int64_list.value[0], 
 
-                x1 = self.mylist[image_index]['image/object/x1'].values.numpy().clip(0,1)*width
-                y1 = self.mylist[image_index]['image/object/y1'].values.numpy().clip(0,1)*height
-                x2 = self.mylist[image_index]['image/object/x2'].values.numpy().clip(0,1)*width
-                y2 = self.mylist[image_index]['image/object/y2'].values.numpy().clip(0,1)*height
-                x3 = self.mylist[image_index]['image/object/x3'].values.numpy().clip(0,1)*width
-                y3 = self.mylist[image_index]['image/object/y3'].values.numpy().clip(0,1)*height
-                x4 = self.mylist[image_index]['image/object/x4'].values.numpy().clip(0,1)*width
-                y4 = self.mylist[image_index]['image/object/y4'].values.numpy().clip(0,1)*height
+                x1 = np.clip(self.mylist[image_index]['image/object/x1'].float_list.value,0,1)*width
+                y1 = np.clip(self.mylist[image_index]['image/object/y1'].float_list.value,0,1)*height
+                x2 = np.clip(self.mylist[image_index]['image/object/x2'].float_list.value,0,1)*width
+                y2 = np.clip(self.mylist[image_index]['image/object/y2'].float_list.value,0,1)*height
+                x3 = np.clip(self.mylist[image_index]['image/object/x3'].float_list.value,0,1)*width
+                y3 = np.clip(self.mylist[image_index]['image/object/y3'].float_list.value,0,1)*height
+                x4 = np.clip(self.mylist[image_index]['image/object/x4'].float_list.value,0,1)*width
+                y4 = np.clip(self.mylist[image_index]['image/object/y4'].float_list.value,0,1)*height
                 
                 quadrangle = np.array([x1,y1,x2,y2,x3,y3,x4,y4])
                 quadrangle = np.transpose(quadrangle) 
@@ -161,7 +164,7 @@ class ShipGenerator(Generator):
                 annotations['bboxes'] = np.array([[min(_x1,_x2,_x3,_x4),min(_y1,_y2,_y3,_y4),
                                           max(_x1,_x2,_x3,_x4),max(_y1,_y2,_y3,_y4)]
                                          for _x1,_x2,_x3,_x4,_y1,_y2,_y3,_y4 in zip(x1,x2,x3,x4,y1,y2,y3,y4)]) 
-                annotations['labels'] = self.mylist[image_index]['image/object/class/label'].values.numpy()-1
+                annotations['labels'] = np.array(self.mylist[image_index]['image/object/class/label'].int64_list.value)-1
                 
         return annotations
     

@@ -14,7 +14,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-# -*- coding: future_fstrings -*-
     
 import argparse
 from datetime import date
@@ -250,7 +249,7 @@ def check_args(parsed_args):
     Returns
         parsed_args
     """
-
+    
     if parsed_args.gpu and parsed_args.batch_size < len(parsed_args.gpu.split(',')):
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
@@ -399,8 +398,7 @@ def main(args=None):
         validation_generator = None
     elif args.compute_val_loss and validation_generator is None:
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
-
-    # start training
+    
     return model.fit_generator(
         generator=train_generator,
         steps_per_epoch=args.steps,

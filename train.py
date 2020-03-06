@@ -52,9 +52,9 @@ def get_session():
     """
     Construct a modified tf session.
     """
-    config = tf.ConfigProto()
+    config =  tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
-    return tf.Session(config=config)
+    return tf.compat.v1.InteractiveSession(config=config)
 
 
 def create_callbacks(training_model, prediction_model, validation_generator, args):
@@ -75,7 +75,7 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     tensorboard_callback = None
 
     if args.tensorboard_dir:
-        tensorboard_callback = keras.callbacks.TensorBoard(
+        tensorboard_callback = tf.compat.v1.keras.callbacks.TensorBoard(
             log_dir=args.tensorboard_dir,
             histogram_freq=0,
             write_graph=True,
@@ -337,7 +337,7 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    K.set_session(get_session())
+    tf.compat.v1.keras.backend.set_session(get_session())
 
     if args.detect_ship == True : 
         anchor_parameters=AnchorParameters.ship

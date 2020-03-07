@@ -1,0 +1,1 @@
+python train.py --snapshot ./checkpoints/2020-03-07/ship_35_2.0503_2.5923.h5 --detect-quadrangle --detect-ship --phi=1 --gpu=0 --random-transform --compute-val-loss --batch-size=4 --steps=1000 --multiprocessing --workers=8 --max-queue-size=24 ship '/home/minjun/Jupyter/Ship_Detection/Data/train_tfrecorder/train_data.tfrecords' 0.8

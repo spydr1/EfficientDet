@@ -339,7 +339,7 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    tf.compat.v1.keras.backend.set_session(get_session())
+    #tf.compat.v1.keras.backend.set_session(get_session())
     
     if args.detect_ship == True : 
         anchor_parameters=AnchorParameters.ship
@@ -403,7 +403,7 @@ def main(args=None):
 
     
     return model.fit_generator(
-        generator=train_generator,
+        train_generator,
         steps_per_epoch=args.steps,
         initial_epoch=0,
         epochs=args.epochs,

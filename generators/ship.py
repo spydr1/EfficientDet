@@ -200,4 +200,9 @@ class ShipGenerator(Generator):
             ordered_vertexes[idx,2,1] = ymax
             ordered_vertexes[idx,3,0] = xmin
         return ordered_vertexes
+    
+    def object_len(self,image_index):
+        
+        return(len(self.mylist[image_index]['image/object/class/label'].values))
+        
 

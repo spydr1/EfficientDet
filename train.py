@@ -20,6 +20,7 @@ from datetime import date
 import os
 import sys
 import tensorflow as tf
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # import keras
 # import keras.preprocessing.image
@@ -143,7 +144,8 @@ def create_generators(args):
         'phi': args.phi,
         'detect_text': args.detect_text,
         'detect_ship': args.detect_ship,
-        'detect_quadrangle': args.detect_quadrangle
+        'detect_quadrangle': args.detect_quadrangle,
+        'preprocessing_in_gpu' : args.preprocessing_in_gpu
     }
 
     # create random transform generator for augmenting training data
@@ -319,6 +321,9 @@ def parse_args(args):
     parser.add_argument('--workers', help='Number of generator workers.', type=int, default=1)
     parser.add_argument('--max-queue-size', help='Queue length for multiprocessing workers in fit_generator.', type=int,
                         default=10)
+    parser.add_argument('--preprocessing-in-gpu', help='Queue length for multiprocessing workers in fit_generator.', action='store_true'
+                       ,default=False)
+    parser.add_argument('--init-epoch', help='current epoch', type=int, default=1)
     print(vars(parser.parse_args(args)))
     return check_args(parser.parse_args(args))
 
@@ -346,53 +351,60 @@ def main(args=None):
     else : 
         anchor_parameters=None
     
-    #devices=["/gpu:{}".format(i) for i in args.gpu.split(',')] 
-    #mirrored_strategy = tf.distribute.MirroredStrategy(devices=devices)
-    #with mirrored_strategy.scope():
-    model, prediction_model = efficientdet(args.phi,
-                                           num_classes=num_classes,
-                                           num_anchors=num_anchors,
-                                           weighted_bifpn=args.weighted_bifpn,
-                                           freeze_bn=args.freeze_bn,
-                                           detect_quadrangle=args.detect_quadrangle,
-                                           anchor_parameters=anchor_parameters
-                                           )
-    # load pretrained weights
-    if args.snapshot:
-        if args.snapshot == 'imagenet':
-            model_name = 'efficientnet-b{}'.format(args.phi)
-            file_name = '{}_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'.format(model_name)
-            file_hash = WEIGHTS_HASHES[model_name][1]
-            weights_path = keras.utils.get_file(file_name,
-                                                BASE_WEIGHTS_PATH + file_name,
-                                                cache_subdir='models',
-                                                file_hash=file_hash)
-            model.load_weights(weights_path, by_name=True)
-        else:
-            print('Loading model, this may take a second...')
-            model.load_weights(args.snapshot, by_name=True)
+    devices=["/gpu:{}".format(i) for i in args.gpu.split(',')] 
+    mirrored_strategy = tf.distribute.MirroredStrategy(devices=devices)
+    with mirrored_strategy.scope():
+        model, prediction_model = efficientdet(args.phi,
+                                               num_classes=num_classes,
+                                               num_anchors=num_anchors,
+                                               weighted_bifpn=args.weighted_bifpn,
+                                               freeze_bn=args.freeze_bn,
+                                               detect_quadrangle=args.detect_quadrangle,
+                                               anchor_parameters=anchor_parameters,
+                                               preprocessing_in_gpu=args.preprocessing_in_gpu
+                                               )
+        # load pretrained weights
+        if args.snapshot:
+            if args.snapshot == 'imagenet':
+                model_name = 'efficientnet-b{}'.format(args.phi)
+                file_name = '{}_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'.format(model_name)
+                file_hash = WEIGHTS_HASHES[model_name][1]
+                weights_path = keras.utils.get_file(file_name,
+                                                    BASE_WEIGHTS_PATH + file_name,
+                                                    cache_subdir='models',
+                                                    file_hash=file_hash)
+                model.load_weights(weights_path, by_name=True)
+            else:
+                print('Loading model, this may take a second...')
+                model.load_weights(args.snapshot, by_name=True)
 
-    # freeze backbone layers
-    if args.freeze_backbone:
-        # 227, 329, 329, 374, 464, 566, 656
-        for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
-            model.layers[i].trainable = False
-    #if args.gpu and len(args.gpu.split(',')) > 1:
-    #    model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
+        # freeze backbone layers
+        if args.freeze_backbone:
+            # 227, 329, 329, 374, 464, 566, 656
+            for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
+                model.layers[i].trainable = False
+        #if args.gpu and len(args.gpu.split(',')) > 1:
+        #    model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
 
-    # compile model
-    model.compile(optimizer=Adam(lr=1e-3), loss={
-        'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
-        'classification': focal()
-    }, )
+        # compile model
+        model.compile(optimizer=Adam(lr=1e-4), loss={
+            'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
+            'classification': focal()
+        }, )
+        for layer in model.layers:
+            #layer.trainable = True
+            # 'kernel_regularizer' 속성이 있는 인스턴스를 찾아 regularizer를 추가
+            if hasattr(layer, 'kernel_regularizer'):
+                setattr(layer, 'kernel_regularizer', tf.keras.regularizers.l2(l=0.001))
 
-    # print(model.summary())
 
-    # create the callbacks
+        # print(model.summary())
+
+        # create the callbacks
     callbacks = create_callbacks(
         model,
         prediction_model,
-        validation_generator,
+        None,
         args,
     )
 
@@ -401,19 +413,21 @@ def main(args=None):
     elif args.compute_val_loss and validation_generator is None:
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
 
-    
-    return model.fit_generator(
+
+    return model.fit(
         train_generator,
+        initial_epoch=args.init_epoch-1,
         steps_per_epoch=args.steps,
-        initial_epoch=0,
         epochs=args.epochs,
-        verbose=1,
+        verbose=1,    
         callbacks=callbacks,
         workers=args.workers,
-        use_multiprocessing=args.multiprocessing,
         max_queue_size=args.max_queue_size,
-        validation_data=validation_generator
-    )
+        validation_data=validation_generator,
+        )
+# 
+# use_multiprocessing=args.multiprocessing,
+    
 
 
 if __name__ == '__main__':

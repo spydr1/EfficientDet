@@ -104,7 +104,7 @@ for image_path in glob.glob('datasets/ic15/test_images/*.jpg'):
         # cv2.putText(src_image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
         cv2.putText(src_image, f'{ratio:.2f}', (xmin + (xmax - xmin) // 3, (ymin + ymax) // 2),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        cv2.drawContours(src_image, [quadrangle.astype(np.int32).reshape((4, 2))], -1, (0, 0, 255), 1)
+        cv2.drawContours(src_image, [quadrangle.astype(np.int32).reshape((4, 2))], -1, colors, 3)
     cv2.namedWindow('image', cv2.WINDOW_NORMAL)
     cv2.imshow('image', src_image)
     cv2.waitKey(0)

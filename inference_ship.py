@@ -18,11 +18,9 @@ import tensorflow as tf
 import csv
 import re
 import pdb
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-phi = 5
+phi = 1
 weighted_bifpn = False
-model_path = 'checkpoints/2020-03-10/ship_08_1.3620_2.1948.h5'
 image_sizes = (512, 640, 768, 896, 1024, 1280, 1408)
 image_size = image_sizes[phi]
 classes_name = ['container','oil tanker','aircraft carrier','maritime vessels']
@@ -31,58 +29,45 @@ AnchorParameters.ship = AnchorParameters(
     sizes=[32, 64, 128, 256, 512],
     strides=[8, 16, 32, 64, 128],
     # ratio=h/w
-    ratios=np.array([0.5,1, 2], keras.backend.floatx()),
-    scales=np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
+    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+    scales=np.array([0.25, 0.5, 0.75, 1.0], keras.backend.floatx()),
 )
-score_threshold = 0.5
-colors = [np.random.randint(0, 256, 3).tolist() for i in range(num_classes)]
+colors = [np.random.randint(100, 256, 3).tolist() for i in range(num_classes)]
 
-# Malisiewicz et al.
-def non_max_suppression_fast(boxes, overlapThresh):
-    # if there are no boxes, return an empty list
-    if len(boxes) == 0:
-        return []
-    # if the bounding boxes integers, convert them to floats --
-    # this is important since we'll be doing a bunch of divisions
-    if boxes.dtype.kind == "i":
-        boxes = boxes.astype("float")
-    # initialize the list of picked indexes	
-    pick = []
-    # grab the coordinates of the bounding boxes
-    x1 = boxes[:,0]
-    y1 = boxes[:,1]
-    x2 = boxes[:,2]
-    y2 = boxes[:,3]
-    # compute the area of the bounding boxes and sort the bounding
-    # boxes by the bottom-right y-coordinate of the bounding box
-    area = (x2 - x1 + 1) * (y2 - y1 + 1)
-    idxs = np.argsort(y2)
-    # keep looping while some indexes still remain in the indexes
-    # list
-    while len(idxs) > 0:
-        # grab the last index in the indexes list and add the
-        # index value to the list of picked indexes
-        last = len(idxs) - 1
-        i = idxs[last]
-        pick.append(i)
-        # find the largest (x, y) coordinates for the start of
-        # the bounding box and the smallest (x, y) coordinates
-        # for the end of the bounding box
-        xx1 = np.maximum(x1[i], x1[idxs[:last]])
-        yy1 = np.maximum(y1[i], y1[idxs[:last]])
-        xx2 = np.minimum(x2[i], x2[idxs[:last]])
-        yy2 = np.minimum(y2[i], y2[idxs[:last]])
-        # compute the width and height of the bounding box
-        w = np.maximum(0, xx2 - xx1 + 1)
-        h = np.maximum(0, yy2 - yy1 + 1)
-        # compute the ratio of overlap
-        overlap = (w * h) / area[idxs[:last]]
-        # delete all indexes from the index list that have
-        idxs = np.delete(idxs, np.concatenate(([last],
-            np.where(overlap > overlapThresh)[0])))
-    # return only the bounding boxes that were picked using the
-    # integer data type
-    return np.array(pick)
+from shapely.geometry import Polygon
+
+def nms (quadrangles,boxes,scores,classes,ratios, threshold=0.7):
+    order = np.argsort(scores)[::-1]
+    scores = scores[order]
+    quadrangles = quadrangles[order]
+    boxes = boxes[order]
+    classes = classes[order]
+    ratios = ratios[order]
+    keep = [True]*len(order)
+
+    for i,p1 in enumerate(quadrangles):
+        p1 = Polygon(((p1[0],p1[1]),
+                         (p1[2],p1[3]),
+                         (p1[4],p1[5]),
+                         (p1[6],p1[7])))
+        for j,p2 in enumerate(quadrangles):
+
+            p2 = Polygon(((p2[0],p2[1]),
+                         (p2[2],p2[3]),
+                         (p2[4],p2[5]),
+                         (p2[6],p2[7])))
+            
+            inter = p1.intersection(p2).area
+            union = p1.area+p2.area-inter
+            iou = inter/(union+1e-5)
+            if j>i and iou>threshold:
+                keep[j]=False
+    quadrangles = quadrangles[keep]
+    boxes = boxes[keep]
+    scores = scores[keep]
+    classes = classes[keep]
+    ratios = ratios[keep]
+    return quadrangles,boxes,scores,classes,ratios
 
 def save_det_to_csv(dst_path, det_by_file):
     """ Save detected objects to CSV format
@@ -142,7 +127,7 @@ def get_patch_generator(image, patch_size, overlay_size):
 
             yield patch_image, row, col
 
-def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_img, test_one,score_threshold,nms_threshold ):
+def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_img, test_one,score_threshold,nms_threshold,model_nms_threshold):
     """ Inference images to detect objects
 
     :param str ckpt_path: path to trained checkpoint
@@ -155,7 +140,7 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
     """
     # Get filenames
     file_paths = [os.path.join(root, name) for root, dirs, files in os.walk(image_dir) for name in files if
-                  name.endswith('png')]
+                  name.endswith('png') or name.endswith('jpg')]
     
     model, prediction_model = efficientdet(phi=phi,
                                        weighted_bifpn=weighted_bifpn,
@@ -164,14 +149,15 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
                                        score_threshold=score_threshold,
                                        detect_quadrangle=True,
                                        anchor_parameters=AnchorParameters.ship,
-                                       nms_threshold = nms_threshold)
+                                       nms_threshold = model_nms_threshold)
+    print(model_path)
     prediction_model.load_weights(model_path, by_name=True)
     det_by_file = dict()
     
     patch_size = args.patch_size
     overlay_size = args.overlay_size
     if test_one :
-        file_paths = file_paths[:1]
+        file_paths = file_paths[:20]
     
     for file_path in tqdm(file_paths):
         start = time.time() 
@@ -182,18 +168,15 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
         classes_list, scores_list, quadrangles_list, boxes_list,ratios_list = list(), list(), list(), list(), list()
         
         for patch_image, row, col in patch_generator:
+            #print("row {} col {}".format(row,col))
             image, scale, offset_h, offset_w = preprocess_image(patch_image, image_size=image_size)
             inputs = np.expand_dims(image, axis=0)
             anchors = anchors_for_shape((image_size, image_size), anchor_params=AnchorParameters.ship)
             # run network
             boxes, scores, alphas, ratios, classes = prediction_model.predict([np.expand_dims(image, axis=0),
                                                                                        np.expand_dims(anchors, axis=0)])
-
+            h, w = patch_image.shape[:2]
             
-            h, w = image.shape[:2]
-
-
-
             alphas = 1 / (1 + np.exp(-alphas))
             ratios = 1 / (1 + np.exp(-ratios))
             quadrangles = np.zeros(boxes.shape[:2] + (8,))
@@ -219,7 +202,9 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
             quadrangles /= scale
             quadrangles[0, :, [0, 2, 4, 6]] = np.clip(quadrangles[0, :, [0, 2, 4, 6]], 0, w - 1) + col
             quadrangles[0, :, [1, 3, 5, 7]] = np.clip(quadrangles[0, :, [1, 3, 5, 7]], 0, h - 1) + row
-
+            
+            #[1, 3, 5, 7]]
+            #[0, 2, 4, 6]
             # select indices which have a score above the threshold
             indices = np.where(scores[0, :] > score_threshold)[0]
 
@@ -248,18 +233,9 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
         #classes = classes[scores > 0]
         #scores = scores[scores > 0]
         #pdb.set_trace()
-        
-        selected_indices = non_max_suppression_fast(boxes, overlapThresh = nms_threshold)
-        #print(selected_indices)
-        boxes = boxes[selected_indices]
-        quadrangles = quadrangles[selected_indices]
-        classes = classes[selected_indices]
-        scores =  scores[selected_indices]
-        ratios = ratios[selected_indices]
-        #print("prediction length :", len(boxes),len(scores),len(classes),len(quadrangles),len(ratios))
-
+        quadrangles, boxes, classes, scores,ratios = nms(quadrangles, boxes, classes, scores, ratios , nms_threshold)
         det_by_file[file_path] = {'boxes': quadrangles, 'classes': classes, 'scores': scores}
-        print(time.time() - start)
+        #print(time.time() - start)
 
     # Save detection output
         if save_img:
@@ -268,24 +244,25 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
                 ymin = int(round(bbox[1]))
                 xmax = int(round(bbox[2]))
                 ymax = int(round(bbox[3]))
+                
                 score = '{:.4f}'.format(score)
                 class_id = int(label)
                 color = colors[class_id]
                 class_name = classes_name[class_id]
                 label = '-'.join([class_name, score])
                 ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                cv2.rectangle(src_image, (xmin, ymin), (xmax, ymax), color, 1)
+                #cv2.rectangle(src_image, (xmin, ymin), (xmax, ymax), color, 1)
                 #cv2.rectangle(src_image, (xmin, ymax - ret[1] - baseline), (xmin + ret[0], ymax), color, -1)
-                cv2.putText(src_image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                #cv2.putText(src_image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
                 #cv2.putText(src_image, score, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
                 #cv2.putText(src_image, f'{ratio:.2f}', (xmin + (xmax - xmin) // 3, (ymin + ymax) // 2),
                 #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-                cv2.drawContours(src_image, [quadrangle.astype(np.int32).reshape((4, 2))], -1, color, 1)
-            cv2.imwrite('test2/img/ship{}.jpg'.format(int(re.findall("\d+",file_path)[0])),src_image)
+                cv2.drawContours(src_image, [quadrangle.astype(np.int32).reshape((4, 2))], -1, color, 3)
+            cv2.imwrite(dst_path+'/img/ship{}.jpg'.format(int(re.findall("\d+",file_path)[0])),src_image)
         #if test_one :
         #    break
             
-    save_det_to_csv(dst_path, det_by_file)
+    save_det_to_csv(dst_path+'/result.csv', det_by_file)
 
 
 #cv2.namedWindow('image', cv2.WINDOW_NORMAL)
@@ -294,7 +271,7 @@ def inference(model_path, image_dir, dst_path, patch_size, overlay_size, save_im
 
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '5'
     
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -308,8 +285,10 @@ if __name__ == '__main__':
                         help='Patch size, width and height of patch is equal.')
     parser.add_argument('--overlay_size', type=int, default=384,
                         help='Overlay size for patching.')
-    parser.add_argument('--score_threshold', type=float, default=0.7,
+    parser.add_argument('--score_threshold', type=float, default=0.5,
                         help='score_threshold')
+    parser.add_argument('--model_nms_threshold', type=float, default=0.7,
+                    help='model_nms_threshold')
     parser.add_argument('--nms_threshold', type=float, default=0.5,
                         help='nms_threshold')
     parser.add_argument('--save_img', help='does save the image?', action='store_true',default=False)

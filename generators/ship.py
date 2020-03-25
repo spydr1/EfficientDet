@@ -40,6 +40,8 @@ def _parse_image_function(example_proto):
   return tf.io.parse_single_example(example_proto, image_feature_description)
 
 class ShipGenerator(Generator):
+    
+    
     def __init__(
             self,
             set_name,
@@ -47,6 +49,7 @@ class ShipGenerator(Generator):
             gen_type = 'train',
             ratio = 1.0,
             classes = ship_classes,
+            selection = True,
             **kwargs
     ):
         """
@@ -65,16 +68,28 @@ class ShipGenerator(Generator):
         raw_image_dataset = tf.data.TFRecordDataset(data_dir)
         parsed_image_dataset = raw_image_dataset.map(_parse_image_function)
         self.mylist = np.array(list(parsed_image_dataset))
+        len_before = len(self.mylist)
+        if selection :
+            _selection = self._selection()
+            self.mylist =  self.mylist[self._selection()]
         self.length = self.mylist.shape[0]
+        
+        
         if gen_type == 'train' :
             self.mylist= self.mylist[:int(ratio*self.length)]
         elif gen_type == 'val' : 
             self.mylist= self.mylist[int(-ratio*self.length):]
         self.length = self.mylist.shape[0]
+        self.splitlength = self.mylist.shape[0]
+                
+        if selection :
+            print ("data selection : {} -> {} {}:{} split : {}".format(len_before,len(self.mylist),int(ratio*10),int((1-ratio)*10),self.splitlength))
+
         self.labels = {}
         for key, value in self.classes.items():
             self.labels[value] = key
         super(ShipGenerator, self).__init__(**kwargs)
+        
 
     def size(self):
         """
@@ -139,29 +154,32 @@ class ShipGenerator(Generator):
         annotations = {'labels': np.empty((length,), dtype=np.int32),
                        'bboxes': np.empty((length, 4), dtype=np.float32),
                        'quadrangles': np.empty((length, 4, 2), dtype=np.float32),
+                       'num' : length,
+                       'totalsize' : np.empty((length, 4, 2), dtype=np.float32),
                        }
-        for annot in self.mylist[image_index]:
-            if self.detect_quadrangle: 
-                width, height = self.mylist[image_index]['image/width'].numpy(),self.mylist[image_index]['image/height'].numpy(), 
+        #for annot in self.mylist[image_index]:
+        if self.detect_quadrangle: 
+            width, height = self.mylist[image_index]['image/width'].numpy(),self.mylist[image_index]['image/height'].numpy(), 
 
-                x1 = self.mylist[image_index]['image/object/x1'].values.numpy().clip(0,1)*width
-                y1 = self.mylist[image_index]['image/object/y1'].values.numpy().clip(0,1)*height
-                x2 = self.mylist[image_index]['image/object/x2'].values.numpy().clip(0,1)*width
-                y2 = self.mylist[image_index]['image/object/y2'].values.numpy().clip(0,1)*height
-                x3 = self.mylist[image_index]['image/object/x3'].values.numpy().clip(0,1)*width
-                y3 = self.mylist[image_index]['image/object/y3'].values.numpy().clip(0,1)*height
-                x4 = self.mylist[image_index]['image/object/x4'].values.numpy().clip(0,1)*width
-                y4 = self.mylist[image_index]['image/object/y4'].values.numpy().clip(0,1)*height
-                
-                quadrangle = np.array([x1,y1,x2,y2,x3,y3,x4,y4])
-                quadrangle = np.transpose(quadrangle) 
-                quadrangle = np.reshape(quadrangle,(-1,4,2))
-                ordered_quadrangle = self.reorder_vertexes(quadrangle)
-                annotations['quadrangles'] = ordered_quadrangle
-                annotations['bboxes'] = np.array([[min(_x1,_x2,_x3,_x4),min(_y1,_y2,_y3,_y4),
-                                          max(_x1,_x2,_x3,_x4),max(_y1,_y2,_y3,_y4)]
-                                         for _x1,_x2,_x3,_x4,_y1,_y2,_y3,_y4 in zip(x1,x2,x3,x4,y1,y2,y3,y4)]) 
-                annotations['labels'] = self.mylist[image_index]['image/object/class/label'].values.numpy()-1
+            x1 = self.mylist[image_index]['image/object/x1'].values.numpy().clip(0,1)*width
+            y1 = self.mylist[image_index]['image/object/y1'].values.numpy().clip(0,1)*height
+            x2 = self.mylist[image_index]['image/object/x2'].values.numpy().clip(0,1)*width
+            y2 = self.mylist[image_index]['image/object/y2'].values.numpy().clip(0,1)*height
+            x3 = self.mylist[image_index]['image/object/x3'].values.numpy().clip(0,1)*width
+            y3 = self.mylist[image_index]['image/object/y3'].values.numpy().clip(0,1)*height
+            x4 = self.mylist[image_index]['image/object/x4'].values.numpy().clip(0,1)*width
+            y4 = self.mylist[image_index]['image/object/y4'].values.numpy().clip(0,1)*height
+
+            quadrangle = np.array([x1,y1,x2,y2,x3,y3,x4,y4])
+            quadrangle = np.transpose(quadrangle) 
+            quadrangle = np.reshape(quadrangle,(-1,4,2))
+            ordered_quadrangle = self.reorder_vertexes(quadrangle)
+            annotations['quadrangles'] = ordered_quadrangle
+            annotations['bboxes'] = np.array([[min(_x1,_x2,_x3,_x4),min(_y1,_y2,_y3,_y4),
+                                      max(_x1,_x2,_x3,_x4),max(_y1,_y2,_y3,_y4)]
+                                     for _x1,_x2,_x3,_x4,_y1,_y2,_y3,_y4 in zip(x1,x2,x3,x4,y1,y2,y3,y4)]) 
+            annotations['totalsize'] = (annotations['bboxes'][:,2]-annotations['bboxes'][:,0]) * (annotations['bboxes'][:,3]- annotations['bboxes'][:,1])
+            annotations['labels'] = self.mylist[image_index]['image/object/class/label'].values.numpy()-1
                 
         return annotations
     
@@ -204,5 +222,43 @@ class ShipGenerator(Generator):
     def object_len(self,image_index):
         
         return(len(self.mylist[image_index]['image/object/class/label'].values))
+    
+    def _selection(self):
+        """ 
+        data selection 
+        cond 1 : 배의 갯수 3개 이상
+        cond 2 : 큰 형태의 배 포함 
+        cond 3 : aircraft carrier 반드시 포함 
+        """
+        index=[]
+        mean_size = 20000
+        for i,_list in enumerate(self.mylist):
+            length = len(_list['image/object/class/label'].values.numpy())
+            aircraft_boolean = np.any(_list['image/object/class/label'].values.numpy()==3)
+            width, height = _list['image/width'].numpy(), _list['image/height'].numpy(), 
+            x1 = _list['image/object/x1'].values.numpy().clip(0,1)*width
+            y1 = _list['image/object/y1'].values.numpy().clip(0,1)*height
+            x2 = _list['image/object/x2'].values.numpy().clip(0,1)*width
+            y2 = _list['image/object/y2'].values.numpy().clip(0,1)*height
+            x3 = _list['image/object/x3'].values.numpy().clip(0,1)*width
+            y3 = _list['image/object/y3'].values.numpy().clip(0,1)*height
+            x4 = _list['image/object/x4'].values.numpy().clip(0,1)*width
+            y4 = _list['image/object/y4'].values.numpy().clip(0,1)*height
+            bboxes = np.array([[min(_x1,_x2,_x3,_x4),min(_y1,_y2,_y3,_y4),
+                                max(_x1,_x2,_x3,_x4),max(_y1,_y2,_y3,_y4)]
+                               for _x1,_x2,_x3,_x4,_y1,_y2,_y3,_y4 in zip(x1,x2,x3,x4,y1,y2,y3,y4)]) 
+            totalsize = (bboxes[:,2]-bboxes[:,0]) * (bboxes[:,3]- bboxes[:,1])
+            
+            if aircraft_boolean:
+                index+=[i]
+            elif length>3 :
+                index+=[i]
+            else :
+                for s in totalsize:
+                    if len(np.where(s>mean_size)[0])>0 : 
+                        index +=[i]
+                        break
         
-
+        return index
+    
+   

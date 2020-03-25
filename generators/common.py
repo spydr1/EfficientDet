@@ -4,7 +4,7 @@ import warnings
 import cv2
 from tensorflow import keras
 from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters
-
+import gc
 
 class Generator(keras.utils.Sequence):
     """
@@ -23,7 +23,6 @@ class Generator(keras.utils.Sequence):
             detect_text=False,
             detect_ship=False,
             detect_quadrangle=False,
-            preprocessing_in_gpu=False,
     ):
         """
         Initialize Generator object.
@@ -44,10 +43,7 @@ class Generator(keras.utils.Sequence):
         self.detect_quadrangle = detect_quadrangle
         self.image_size = image_sizes[phi]
         self.groups = None
-        self.preprocessing_in_gpu=preprocessing_in_gpu
         
-        if preprocessing_in_gpu:
-            print("preprocessing_in_gpu")
         
         if self.detect_text :
             self.anchor_parameters = AnchorParameters(
@@ -437,6 +433,7 @@ class Generator(keras.utils.Sequence):
         """
         Keras sequence method for generating batches.
         """
+
         group = self.groups[index]
         inputs, targets = self.compute_inputs_targets(group)
         return inputs, targets
@@ -455,20 +452,19 @@ class Generator(keras.utils.Sequence):
         image = cv2.resize(image, (resized_width, resized_height))
         offset_h = (self.image_size - resized_height) // 2
         offset_w = (self.image_size - resized_width) // 2
-        if self.preprocessing_in_gpu==False:
-            new_image = np.ones((self.image_size, self.image_size, 3), dtype=np.float32) * 128.
-            new_image[offset_h:offset_h + resized_height, offset_w:offset_w + resized_width] = image.astype(np.float32)
-            new_image /= 255.
-            mean = [0.485, 0.456, 0.406]
-            std = [0.229, 0.224, 0.225]
-            new_image[..., 0] -= mean[0]
-            new_image[..., 1] -= mean[1]
-            new_image[..., 2] -= mean[2]
-            new_image[..., 0] /= std[0]
-            new_image[..., 1] /= std[1]
-            new_image[..., 2] /= std[2]
-        else:
-            new_image = np.array(image,dtype=np.float32)
+        
+        new_image = np.ones((self.image_size, self.image_size, 3), dtype=np.float32) * 128.
+        new_image[offset_h:offset_h + resized_height, offset_w:offset_w + resized_width] = image.astype(np.float32)
+        new_image /= 255.
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        new_image[..., 0] -= mean[0]
+        new_image[..., 1] -= mean[1]
+        new_image[..., 2] -= mean[2]
+        new_image[..., 0] /= std[0]
+        new_image[..., 1] /= std[1]
+        new_image[..., 2] /= std[2]
+
             
         return new_image, scale, offset_h, offset_w
 

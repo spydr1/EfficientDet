@@ -80,7 +80,6 @@ def init_tfkeras_custom_objects():
         'swish': inject_tfkeras_modules(model.get_swish)(),
         'FixedDropout': inject_tfkeras_modules(model.get_dropout)()
     }
-
     tfkeras.utils.get_custom_objects().update(custom_objects)
 
 

@@ -37,6 +37,11 @@ from model import efficientdet
 from losses import smooth_l1, focal, smooth_l1_quad
 from efficientnet import BASE_WEIGHTS_PATH, WEIGHTS_HASHES
 from utils.anchors import AnchorParameters
+import gc
+
+class MyCustomCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        gc.collect()
 
 
 def makedirs(path):
@@ -116,6 +121,8 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
             # mode='max'
         )
         callbacks.append(checkpoint)
+        mycustomcallback = MyCustomCallback()
+        callbacks.append(mycustomcallback)
 
     # callbacks.append(keras.callbacks.ReduceLROnPlateau(
     #     monitor='loss',
@@ -145,7 +152,6 @@ def create_generators(args):
         'detect_text': args.detect_text,
         'detect_ship': args.detect_ship,
         'detect_quadrangle': args.detect_quadrangle,
-        'preprocessing_in_gpu' : args.preprocessing_in_gpu
     }
 
     # create random transform generator for augmenting training data
@@ -214,23 +220,26 @@ def create_generators(args):
     elif args.dataset_type == 'ship':
         # import here to prevent unnecessary dependency on cocoapi
         from generators.ship import ShipGenerator
+        train_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/train_data_1280.tfrecords'
+        val_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/val_data_1280.tfrecords'
         train_generator = ShipGenerator(
             'train/ship_detection',
-            args.ship_path,
+            train_dir,
             gen_type='train',
-            ratio = args.train_ratio,
-            misc_effect=misc_effect,
-            visual_effect=visual_effect,
-            group_method='random',
+            ratio = 1,
+            selection = False,
             **common_args
         )
+#group_method='random',        
+#misc_effect=misc_effect,
+#visual_effect=visual_effect,
 
         validation_generator = ShipGenerator(
             'val/ship_detection',
-            args.ship_path,
+            val_dir,
             gen_type='val',
-            ratio = 1-args.train_ratio,
-            shuffle_groups=False,
+            ratio = 1,
+            selection = False,
             **common_args
         )
     else:
@@ -287,7 +296,7 @@ def parse_args(args):
                             help='Path to CSV file containing annotations for validation (optional).')
     
     ship_parser = subparsers.add_parser('ship')
-    ship_parser.add_argument('ship_path', help='Path to CSV file containing annotations for training.')
+    ship_parser.add_argument('ship_path', help='Path to tfrecord file', default=None)
     ship_parser.add_argument('train_ratio', help='train raitio' , type=float, default=1.0)
         
     parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
@@ -321,9 +330,7 @@ def parse_args(args):
     parser.add_argument('--workers', help='Number of generator workers.', type=int, default=1)
     parser.add_argument('--max-queue-size', help='Queue length for multiprocessing workers in fit_generator.', type=int,
                         default=10)
-    parser.add_argument('--preprocessing-in-gpu', help='Queue length for multiprocessing workers in fit_generator.', action='store_true'
-                       ,default=False)
-    parser.add_argument('--init-epoch', help='current epoch', type=int, default=1)
+
     print(vars(parser.parse_args(args)))
     return check_args(parser.parse_args(args))
 
@@ -361,7 +368,6 @@ def main(args=None):
                                                freeze_bn=args.freeze_bn,
                                                detect_quadrangle=args.detect_quadrangle,
                                                anchor_parameters=anchor_parameters,
-                                               preprocessing_in_gpu=args.preprocessing_in_gpu
                                                )
         # load pretrained weights
         if args.snapshot:
@@ -383,29 +389,29 @@ def main(args=None):
             # 227, 329, 329, 374, 464, 566, 656
             for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
                 model.layers[i].trainable = False
-        #if args.gpu and len(args.gpu.split(',')) > 1:
-        #    model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
-
-        # compile model
-        model.compile(optimizer=Adam(lr=1e-4), loss={
+        #else :
+        #    for i in range(1, [227, 329, 329, 374, 464, 566, 656][3]):
+        #        model.layers[i].trainable = False
+        
+        model.compile(optimizer=Adam(lr=5e-7), loss={
             'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
             'classification': focal()
         }, )
-        for layer in model.layers:
-            #layer.trainable = True
+#        for layer in model.layers:
+#            layer.trainable = True
             # 'kernel_regularizer' 속성이 있는 인스턴스를 찾아 regularizer를 추가
-            if hasattr(layer, 'kernel_regularizer'):
-                setattr(layer, 'kernel_regularizer', tf.keras.regularizers.l2(l=0.001))
+#            if hasattr(layer, 'kernel_regularizer'):
+#                setattr(layer, 'kernel_regularizer', tf.keras.regularizers.l2(l=0.0001))
 
-
-        # print(model.summary())
+        
+        #print(model.summary())
 
         # create the callbacks
     callbacks = create_callbacks(
         model,
         prediction_model,
         None,
-        args,
+        args
     )
 
     if not args.compute_val_loss:
@@ -413,10 +419,11 @@ def main(args=None):
     elif args.compute_val_loss and validation_generator is None:
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
 
-
+    if args.snapshot == 'imagenet' : initial_epoch = 0
+    else: initial_epoch = int(args.snapshot.split('_')[1])
     return model.fit(
         train_generator,
-        initial_epoch=args.init_epoch-1,
+        initial_epoch=initial_epoch,
         steps_per_epoch=args.steps,
         epochs=args.epochs,
         verbose=1,    
@@ -424,8 +431,10 @@ def main(args=None):
         workers=args.workers,
         max_queue_size=args.max_queue_size,
         validation_data=validation_generator,
+        validation_steps = args.steps//10
         )
-# 
+
+# validation_steps = args.steps//10
 # use_multiprocessing=args.multiprocessing,
     
 

@@ -24,6 +24,21 @@ backbones = [EfficientNetB0, EfficientNetB1, EfficientNetB2,
              EfficientNetB3, EfficientNetB4, EfficientNetB5, EfficientNetB6]
 
 
+def mean_image_subtraction(images, means=[123.68, 116.78, 103.94]):
+    '''
+    image normalization
+    :param images:
+    :param means:
+    :return:
+    '''
+    num_channels = images.shape[-1]
+    if len(means) != num_channels:
+        raise ValueError('len(means) must match the number of channels')
+    channels = tf.split(axis=-1, num_or_size_splits=num_channels, value=images)
+    for i in range(num_channels):
+        channels[i] -= means[i]
+    return tf.concat(axis=3, values=channels)
+
 def DepthwiseConvBlock(kernel_size, strides, name, freeze_bn=False):
     f1 = layers.DepthwiseConv2D(kernel_size=kernel_size, strides=strides, padding='same',
                                 use_bias=False, name='{}_dconv'.format(name))
@@ -219,12 +234,15 @@ def build_class_head(width, depth, num_classes=20, num_anchors=9):
 
 def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freeze_bn=False,
                  score_threshold=0.01,
-                 detect_quadrangle=False, anchor_parameters=None):
+                 detect_quadrangle=False, anchor_parameters=None,preprocessing_in_gpu=False,nms_threshold=0.7):
     assert phi in range(7)
     input_size = image_sizes[phi]
     input_shape = (input_size, input_size, 3)
     # input_shape = (None, None, 3)
     image_input = layers.Input(input_shape,dtype=tf.float32)
+
+    #if preprocessing_in_gpu:
+    #    image_input = mean_image_subtraction(image_input)
     w_bifpn = w_bifpns[phi]
     d_bifpn = 2 + phi
     w_head = w_bifpn
@@ -260,13 +278,14 @@ def efficientdet(phi, num_classes=20, num_anchors=9, weighted_bifpn=False, freez
         detections = FilterDetections(
             name='filtered_detections',
             score_threshold=score_threshold,
-            detect_quadrangle=True
+            detect_quadrangle=True,
+            nms_threshold=nms_threshold
         )([boxes, classification, regression[..., 4:8], regression[..., 8]])
     else:
         detections = FilterDetections(
             name='filtered_detections',
-            score_threshold=score_threshold
+            score_threshold=score_threshold,
+            nms_threshold=nms_threshold
         )([boxes, classification])
-    print(np.shape(detections))
     prediction_model = models.Model(inputs=[image_input], outputs=detections, name='efficientdet_p')
     return model, prediction_model

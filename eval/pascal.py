@@ -89,6 +89,7 @@ class Evaluate(keras.callbacks.Callback):
         else:
             self.mean_ap = sum(precisions) / sum(x > 0 for x in total_instances)
 
+# https://stackoverflow.com/questions/54924673/writing-summary-scalar-with-dataset-api-and-keras
         if self.tensorboard is not None and self.tensorboard.writer is not None:
             import tensorflow as tf
             summary = tf.compat.v1.Summary()

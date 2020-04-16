@@ -1,4 +1,5 @@
-python inference_ship.py --model_path=checkpoints/reanchor/ship_99_0.3717_0.3662.h5 --image_dir=/home/minjun/Data/Ship/test  --dst_path=./kaggle --patch_size=1280 --overlay_size=420 --score_threshold=0.7 --model_nms_threshold=0.7 --nms_threshold=0.5 --save_img
+python inference_ship.py --model_path=checkpoints/test5/ship_30_1.1624_1.7138.h5 --image_dir=/home/minjun/Jupyter/Ship_Detection/Data/test/img  --dst_path=./test2 --patch_size=1280 --overlay_size=420 --score_threshold=0.9 --model_nms_threshold=0.7 --nms_threshold=0.7 --save_img
+
 #--test_one
 #--save_img
 

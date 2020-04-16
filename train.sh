@@ -1,4 +1,4 @@
-python train.py --snapshot=checkpoints/reanchor/ship_99_0.3717_0.3662.h5 --snapshot-path=checkpoints/reanchor --detect-quadrangle --detect-ship --phi=1 --gpu=0,1,2,4 --random-transform --batch-size=16 --steps=1600 --compute-val-loss --workers=8 --max-queue-size=8 --epochs=200 ship None 0.8 
+python train.py --snapshot=checkpoints/test6/ship_18_1.6660_2.0261.h5 --snapshot-path=checkpoints/test6 --freeze-backbone --detect-quadrangle --detect-ship --phi=1 --gpu=0,1,2,4 --random-transform --batch-size=16 --steps=800 --compute-val-loss --workers=8 --max-queue-size=8 --epochs=100 ship None 0.8 
 #--freeze-backbone
 #--multiprocessing
 # mAP callback 제거
@@ -23,3 +23,23 @@ python train.py --snapshot=checkpoints/reanchor/ship_99_0.3717_0.3662.h5 --snaps
 
 # 정규화로 쭉 .. 
 # 전체 데이터 로 학습 .. 
+
+
+# phi= 4 가 학습이 잘 안되는 이유
+# 1. graident vanishing -> freeze로 테스트
+# 2. 전체를 학습하기 까다롭 -> freeze로 테스트
+# 3. laerning schedule이 이상함 -> 기존에 잘됫던걸로 테스트 
+
+# reanchorphi4
+
+#AnchorParameters.ship = AnchorParameters(
+#    sizes=[32, 64, 128, 256, 512],
+#    strides=[8, 16, 32, 64, 128],
+    # ratio=h/w
+#    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+#    scales=np.array([0.25, 0.5, 0.75, 1.0], keras.backend.floatx()),
+#)
+# L2 (0.001)
+# scheduler
+
+# test2 

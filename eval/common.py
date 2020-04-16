@@ -43,11 +43,13 @@ def nms (quadrangles,boxes,scores,classes,ratios, threshold=0.7):
                          (p2[2],p2[3]),
                          (p2[4],p2[5]),
                          (p2[6],p2[7])))
-            
-            inter = p1.intersection(p2).area
-            union = p1.area+p2.area-inter
-            iou = inter/(union+1e-5)
-            if j>i and iou>threshold:
+            try : 
+                inter = p1.intersection(p2).area
+                union = p1.area+p2.area-inter
+                iou = inter/(union+1e-5)
+                if j>i and iou>threshold:
+                    keep[j]=False
+            except : 
                 keep[j]=False
     quadrangles = quadrangles[keep]
     boxes = boxes[keep]

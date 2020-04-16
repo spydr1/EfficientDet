@@ -26,7 +26,12 @@ from generators.ship import ShipGenerator
 from eval.common import evaluate
 import numpy as np
 
-
+AnchorParameters.ship = AnchorParameters(
+    sizes=[32, 64, 128, 256, 512],
+    strides=[8, 16, 32, 64, 128],
+    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+    scales=np.array([0.25, 0.5, 0.75, 1.0 , 1.25], keras.backend.floatx()),
+)
     
 
 def main():
@@ -46,7 +51,7 @@ def main():
     
     #ship_path = '/home/minjun/Jupyter/Ship_Detection/Data/train_tfrecorder/train_data2.tfrecords'
     val_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/val_data_1280.tfrecords'
-    model_path = 'checkpoints/reanchor/ship_99_0.3717_0.3662.h5'
+    model_path = 'checkpoints/test4/ship_95_0.2889_0.3075.h5'
     print(model_path)
     
 
@@ -75,12 +80,12 @@ def main():
     
     model, prediction_model = efficientdet(phi,
                                            num_classes=num_classes,
-                                               num_anchors=num_anchors,
+                                           num_anchors=num_anchors,
                                            freeze_bn=True,
                                            detect_quadrangle=True,
                                            anchor_parameters=anchor_parameters,
                                            score_threshold=score_threshold,
-                                           nms_threshold=0.7
+                                           nms_threshold=0.3
                                            )
     prediction_model.load_weights(model_path, by_name=True)
     

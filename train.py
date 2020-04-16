@@ -37,11 +37,7 @@ from model import efficientdet
 from losses import smooth_l1, focal, smooth_l1_quad
 from efficientnet import BASE_WEIGHTS_PATH, WEIGHTS_HASHES
 from utils.anchors import AnchorParameters
-import gc
 
-class MyCustomCallback(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        gc.collect()
 
 
 def makedirs(path):
@@ -62,6 +58,37 @@ def get_session():
     config =  tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
     return tf.compat.v1.InteractiveSession(config=config)
+
+class LearningRateScheduler(tf.keras.callbacks.Callback):
+    """Learning rate scheduler which sets the learning rate according to schedule.
+
+    Arguments:
+      schedule: a function that takes an epoch index
+          (integer, indexed from 0) and current learning rate
+          as inputs and returns a new learning rate as output (float).
+    """
+
+    def __init__(self, schedule):
+        super(LearningRateScheduler, self).__init__()
+        self.schedule = schedule
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if not hasattr(self.model.optimizer, 'lr'):
+            raise ValueError('Optimizer must have a "lr" attribute.')
+        # Get the current learning rate from model's optimizer.
+        lr = float(tf.keras.backend.get_value(self.model.optimizer.lr))
+        # Call schedule function to get the scheduled learning rate.
+        scheduled_lr = self.schedule(epoch)
+        # Set the value back to the optimizer before this epoch starts
+        tf.keras.backend.set_value(self.model.optimizer.lr, scheduled_lr)
+        print('\nEpoch %05d: Learning rate is %6.8f.' % (epoch, scheduled_lr))
+
+def scheduler(epoch):
+    if epoch < 10:
+        return 0.001
+    else:
+        return 0.001 * 0.95 ** epoch
+
 
 
 def create_callbacks(training_model, prediction_model, validation_generator, args):
@@ -121,8 +148,8 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
             # mode='max'
         )
         callbacks.append(checkpoint)
-        mycustomcallback = MyCustomCallback()
-        callbacks.append(mycustomcallback)
+        lrschedule = LearningRateScheduler(scheduler)
+        callbacks.append(lrschedule)
 
     # callbacks.append(keras.callbacks.ReduceLROnPlateau(
     #     monitor='loss',
@@ -221,12 +248,13 @@ def create_generators(args):
         # import here to prevent unnecessary dependency on cocoapi
         from generators.ship import ShipGenerator
         train_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/train_data_1280.tfrecords'
-        val_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/val_data_1280.tfrecords'
+        #val_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/val_data_1280.tfrecords'
         train_generator = ShipGenerator(
             'train/ship_detection',
             train_dir,
             gen_type='train',
-            ratio = 1,
+            ratio = args.train_ratio,
+            misc_effect=misc_effect,
             selection = False,
             **common_args
         )
@@ -236,9 +264,9 @@ def create_generators(args):
 
         validation_generator = ShipGenerator(
             'val/ship_detection',
-            val_dir,
+            train_dir,
             gen_type='val',
-            ratio = 1,
+            ratio = 1-args.train_ratio,
             selection = False,
             **common_args
         )
@@ -297,7 +325,7 @@ def parse_args(args):
     
     ship_parser = subparsers.add_parser('ship')
     ship_parser.add_argument('ship_path', help='Path to tfrecord file', default=None)
-    ship_parser.add_argument('train_ratio', help='train raitio' , type=float, default=1.0)
+    ship_parser.add_argument('train_ratio', help='train raitio' , type=float, default=0.8)
         
     parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
     parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
@@ -393,15 +421,14 @@ def main(args=None):
         #    for i in range(1, [227, 329, 329, 374, 464, 566, 656][3]):
         #        model.layers[i].trainable = False
         
-        model.compile(optimizer=Adam(lr=5e-7), loss={
+        model.compile(optimizer=Adam(lr=1e-3), loss={
             'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
             'classification': focal()
         }, )
-#        for layer in model.layers:
-#            layer.trainable = True
+        for i in range([227, 329, 329, 374, 464, 566, 656][args.phi], len(model.layers)):
             # 'kernel_regularizer' 속성이 있는 인스턴스를 찾아 regularizer를 추가
-#            if hasattr(layer, 'kernel_regularizer'):
-#                setattr(layer, 'kernel_regularizer', tf.keras.regularizers.l2(l=0.0001))
+            if hasattr(model.layers[i], 'kernel_regularizer'):
+                setattr(model.layers[i], 'kernel_regularizer', tf.keras.regularizers.l2(l=0.0001))
 
         
         #print(model.summary())
@@ -431,7 +458,7 @@ def main(args=None):
         workers=args.workers,
         max_queue_size=args.max_queue_size,
         validation_data=validation_generator,
-        validation_steps = args.steps//10
+        validation_steps = args.steps//20
         )
 
 # validation_steps = args.steps//10

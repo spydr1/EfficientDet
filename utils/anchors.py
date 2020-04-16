@@ -47,13 +47,51 @@ AnchorParameters.default = AnchorParameters(
 #    scales=np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
 #)
 
+
+# rephi4 , small , tset1, reanchor
+#AnchorParameters.ship = AnchorParameters(
+#    sizes=[32, 64, 128, 256, 512],
+#    strides=[8, 16, 32, 64, 128],
+    # ratio=h/w
+#    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+#    scales=np.array([0.25, 0.5, 0.75, 1.0], keras.backend.floatx()),
+#)
+
+
+# reanchorphi4, anchorphi4, test2
+#AnchorParameters.ship = AnchorParameters(
+#    sizes=[32, 64, 128, 256, 512],
+#    strides=[8, 16, 32, 64, 128],
+    # ratio=h/w
+#    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+#    scales=np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
+#)
+
+#AnchorParameters.ship = AnchorParameters(
+#    sizes=[32, 64, 128, 256, 512],
+#    strides=[8, 16, 32, 64, 128],
+    # ratio=h/w
+#    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+#    scales=np.array([0.5, 0.75, 1.0], keras.backend.floatx()),
+#)
+
+# test3 
+#AnchorParameters.ship = AnchorParameters(
+#    sizes=[32, 64, 128, 256, 512],
+#    strides=[8, 16, 32, 64, 128],
+    # ratio=h/w
+#    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+#    scales=np.array([0.5, 0.75, 1.0 , 1.25], keras.backend.floatx()),
+#)
+# test
 AnchorParameters.ship = AnchorParameters(
     sizes=[32, 64, 128, 256, 512],
     strides=[8, 16, 32, 64, 128],
     # ratio=h/w
     ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
-    scales=np.array([0.25, 0.5, 0.75, 1.0], keras.backend.floatx()),
+    scales=np.array([0.25, 0.5, 0.75, 1.0 , 1.25], keras.backend.floatx()),
 )
+
 
 
 

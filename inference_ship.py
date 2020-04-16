@@ -25,13 +25,13 @@ image_sizes = (512, 640, 768, 896, 1024, 1280, 1408)
 image_size = image_sizes[phi]
 classes_name = ['container','oil tanker','aircraft carrier','maritime vessels']
 num_classes = len(classes_name)
-AnchorParameters.ship = AnchorParameters(
-    sizes=[32, 64, 128, 256, 512],
-    strides=[8, 16, 32, 64, 128],
+#AnchorParameters.ship = AnchorParameters(
+#    sizes=[32, 64, 128, 256, 512],
+#    strides=[8, 16, 32, 64, 128],
     # ratio=h/w
-    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
-    scales=np.array([0.25, 0.5, 0.75, 1.0], keras.backend.floatx()),
-)
+#    ratios=np.array([0.25,0.5,2,4], keras.backend.floatx()),
+#    scales=np.array([0.25, 0.5, 0.75, 1.0], keras.backend.floatx()),
+#)
 colors = [np.random.randint(100, 256, 3).tolist() for i in range(num_classes)]
 
 from shapely.geometry import Polygon

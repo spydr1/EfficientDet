@@ -3,8 +3,9 @@ import random
 import warnings
 import cv2
 from tensorflow import keras
+
 from utils.anchors import anchors_for_shape, anchor_targets_bbox, AnchorParameters
-import gc
+
 
 class Generator(keras.utils.Sequence):
     """
@@ -21,7 +22,6 @@ class Generator(keras.utils.Sequence):
             group_method='random',  # one of 'none', 'random', 'ratio'
             shuffle_groups=True,
             detect_text=False,
-            detect_ship=False,
             detect_quadrangle=False,
     ):
         """
@@ -39,21 +39,12 @@ class Generator(keras.utils.Sequence):
         self.group_method = group_method
         self.shuffle_groups = shuffle_groups
         self.detect_text = detect_text
-        self.detect_ship = detect_ship
         self.detect_quadrangle = detect_quadrangle
         self.image_size = image_sizes[phi]
         self.groups = None
-        
-        
-        if self.detect_text :
-            self.anchor_parameters = AnchorParameters(
+        self.anchor_parameters = AnchorParameters.default if not self.detect_text else AnchorParameters(
             ratios=(0.25, 0.5, 1., 2.),
             sizes=(16, 32, 64, 128, 256))
-        elif self.detect_ship:
-            self.anchor_parameters = AnchorParameters.ship
-        else: 
-            self.anchor_parameters = AnchorParameters.default
-            
         self.anchors = anchors_for_shape((self.image_size, self.image_size), anchor_params=self.anchor_parameters)
         self.num_anchors = self.anchor_parameters.num_anchors()
 
@@ -290,16 +281,12 @@ class Generator(keras.utils.Sequence):
         """
 
         # preprocess the image
-        image, scale, offset_h, offset_w = self.preprocess_image(image)
+        image, scale = self.preprocess_image(image)
 
         # apply resizing to annotations too
         annotations['bboxes'] *= scale
-        annotations['bboxes'][:, [0, 2]] += offset_w
-        annotations['bboxes'][:, [1, 3]] += offset_h
         if self.detect_quadrangle:
             annotations['quadrangles'] *= scale
-            annotations['quadrangles'][:, :, 0] += offset_w
-            annotations['quadrangles'][:, :, 1] += offset_h
         return image, annotations
 
     def preprocess_group(self, image_group, annotations_group):
@@ -433,12 +420,12 @@ class Generator(keras.utils.Sequence):
         """
         Keras sequence method for generating batches.
         """
-
         group = self.groups[index]
         inputs, targets = self.compute_inputs_targets(group)
         return inputs, targets
 
     def preprocess_image(self, image):
+        # image, RGB
         image_height, image_width = image.shape[:2]
         if image_height > image_width:
             scale = self.image_size / image_height
@@ -450,23 +437,16 @@ class Generator(keras.utils.Sequence):
             resized_width = self.image_size
 
         image = cv2.resize(image, (resized_width, resized_height))
-        offset_h = (self.image_size - resized_height) // 2
-        offset_w = (self.image_size - resized_width) // 2
-        
-        new_image = np.ones((self.image_size, self.image_size, 3), dtype=np.float32) * 128.
-        new_image[offset_h:offset_h + resized_height, offset_w:offset_w + resized_width] = image.astype(np.float32)
-        new_image /= 255.
+        image = image.astype(np.float32)
+        image /= 255.
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
-        new_image[..., 0] -= mean[0]
-        new_image[..., 1] -= mean[1]
-        new_image[..., 2] -= mean[2]
-        new_image[..., 0] /= std[0]
-        new_image[..., 1] /= std[1]
-        new_image[..., 2] /= std[2]
-
-            
-        return new_image, scale, offset_h, offset_w
+        image -= mean
+        image /= std
+        pad_h = self.image_size - resized_height
+        pad_w = self.image_size - resized_width
+        image = np.pad(image, [(0, pad_h), (0, pad_w), (0, 0)], mode='constant')
+        return image, scale
 
     def get_augmented_data(self, group):
         """

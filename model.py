@@ -1,4 +1,3 @@
-#-*- coding: future_fstrings -*-
 from functools import reduce
 
 # from keras import layers
@@ -31,7 +30,8 @@ EPSILON = 1e-4
 
 
 def SeparableConvBlock(num_channels, kernel_size, strides, name, freeze_bn=False):
-    f1 = layers.SeparableConv2D(num_channels, kernel_size=kernel_size, strides=strides, padding='same',use_bias=True, name=f'{name}/conv')
+    f1 = layers.SeparableConv2D(num_channels, kernel_size=kernel_size, strides=strides, padding='same',
+                                use_bias=True, name=f'{name}/conv')
     f2 = layers.BatchNormalization(momentum=MOMENTUM, epsilon=EPSILON, name=f'{name}/bn')
     # f2 = BatchNormalization(freeze=freeze_bn, name=f'{name}/bn')
     return reduce(lambda f, g: lambda *args, **kwargs: g(f(*args, **kwargs)), (f1, f2))

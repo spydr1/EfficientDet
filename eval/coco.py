@@ -44,14 +44,10 @@ def evaluate(generator, model, threshold=0.01):
         src_image = image.copy()
         h, w = image.shape[:2]
 
-        anchors = generator.anchors
-        image, scale, offset_h, offset_w = generator.preprocess_image(image)
+        image, scale = generator.preprocess_image(image)
 
         # run network
-        boxes, scores, labels = model.predict_on_batch([np.expand_dims(image, axis=0),
-                                                        np.expand_dims(anchors, axis=0)])
-        boxes[..., [0, 2]] = boxes[..., [0, 2]] - offset_w
-        boxes[..., [1, 3]] = boxes[..., [1, 3]] - offset_h
+        boxes, scores, labels = model.predict_on_batch([np.expand_dims(image, axis=0)])
         boxes /= scale
         boxes[:, :, 0] = np.clip(boxes[:, :, 0], 0, w - 1)
         boxes[:, :, 1] = np.clip(boxes[:, :, 1], 0, h - 1)
@@ -73,7 +69,7 @@ def evaluate(generator, model, threshold=0.01):
             # append detection for each positively labeled class
             image_result = {
                 'image_id': generator.image_ids[index],
-                'category_id': generator.label_to_coco_label(class_id),
+                'category_id': int(class_id) + 1,
                 'score': float(score),
                 'bbox': box.tolist(),
             }
@@ -81,7 +77,7 @@ def evaluate(generator, model, threshold=0.01):
             results.append(image_result)
 
         #     box = np.round(box).astype(np.int32)
-        #     class_name = generator.label_to_name(class_id)
+        #     class_name = generator.label_to_name(generator.coco_label_to_label(class_id + 1))
         #     ret, baseline = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         #     cv2.rectangle(src_image, (box[0], box[1]), (box[0] + box[2], box[1] + box[3]), (0, 255, 0), 1)
         #     cv2.putText(src_image, class_name, (box[0], box[1] + box[3] - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
@@ -100,17 +96,17 @@ def evaluate(generator, model, threshold=0.01):
     json.dump(results, open('{}_bbox_results.json'.format(generator.set_name), 'w'), indent=4)
     json.dump(image_ids, open('{}_processed_image_ids.json'.format(generator.set_name), 'w'), indent=4)
 
-    # load results in COCO evaluation tool
-    coco_true = generator.coco
-    coco_pred = coco_true.loadRes('{}_bbox_results.json'.format(generator.set_name))
-
-    # run COCO evaluation
-    coco_eval = COCOeval(coco_true, coco_pred, 'bbox')
-    coco_eval.params.imgIds = image_ids
-    coco_eval.evaluate()
-    coco_eval.accumulate()
-    coco_eval.summarize()
-    return coco_eval.stats
+    # # load results in COCO evaluation tool
+    # coco_true = generator.coco
+    # coco_pred = coco_true.loadRes('{}_bbox_results.json'.format(generator.set_name))
+    #
+    # # run COCO evaluation
+    # coco_eval = COCOeval(coco_true, coco_pred, 'bbox')
+    # coco_eval.params.imgIds = image_ids
+    # coco_eval.evaluate()
+    # coco_eval.accumulate()
+    # coco_eval.summarize()
+    # return coco_eval.stats
 
 
 class Evaluate(keras.callbacks.Callback):
@@ -149,14 +145,19 @@ class Evaluate(keras.callbacks.Callback):
                     'AR @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]',
                     'AR @[ IoU=0.50:0.95 | area= large | maxDets=100 ]']
         coco_eval_stats = evaluate(self.generator, self.active_model, self.threshold)
-        if coco_eval_stats is not None and self.tensorboard is not None and self.tensorboard.writer is not None:
-            summary = tf.Summary()
-            for index, result in enumerate(coco_eval_stats):
-                summary_value = summary.value.add()
-                summary_value.simple_value = result
-                summary_value.tag = '{}. {}'.format(index + 1, coco_tag[index])
-                self.tensorboard.writer.add_summary(summary, epoch)
-                logs[coco_tag[index]] = result
+        if coco_eval_stats is not None and self.tensorboard is not None:
+            if tf.version.VERSION < '2.0.0' and self.tensorboard.writer is not None:
+                summary = tf.Summary()
+                for index, result in enumerate(coco_eval_stats):
+                    summary_value = summary.value.add()
+                    summary_value.simple_value = result
+                    summary_value.tag = '{}. {}'.format(index + 1, coco_tag[index])
+                    self.tensorboard.writer.add_summary(summary, epoch)
+                    logs[coco_tag[index]] = result
+            else:
+                for index, result in enumerate(coco_eval_stats):
+                    tag = '{}. {}'.format(index + 1, coco_tag[index])
+                    tf.summary.scalar(tag, result, epoch)
 
 
 if __name__ == '__main__':
@@ -164,22 +165,22 @@ if __name__ == '__main__':
     import os
     from generators.coco import CocoGenerator
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-    phi = 0
+    phi = 2
     weighted_bifpn = True
+    model_path = 'efficientdet-d2.h5'
     common_args = {
         'batch_size': 1,
         'phi': phi,
     }
 
     test_generator = CocoGenerator(
-        '/home/adam/workspace/datasets/coco',
-        'val2017',
+        'datasets/coco',
+        'test-dev2017',
         shuffle_groups=False,
         **common_args
     )
-    model_path = 'checkpoints/2019-12-06/coco_14_1.6369_1.6223.h5'
     num_classes = test_generator.num_classes()
     model, prediction_model = efficientdet(phi=phi, num_classes=num_classes, weighted_bifpn=weighted_bifpn,
                                            score_threshold=0.01)

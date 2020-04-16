@@ -23,40 +23,6 @@ import progressbar
 
 assert (callable(progressbar.progressbar)), "Using wrong progressbar module, install 'progressbar2' instead."
 
-def nms (quadrangles,boxes,scores,classes,ratios, threshold=0.7):
-    order = np.argsort(scores)[::-1]
-    scores = scores[order]
-    quadrangles = quadrangles[order]
-    boxes = boxes[order]
-    classes = classes[order]
-    ratios = ratios[order]
-    keep = [True]*len(order)
-
-    for i,p1 in enumerate(quadrangles):
-        p1 = Polygon(((p1[0],p1[1]),
-                         (p1[2],p1[3]),
-                         (p1[4],p1[5]),
-                         (p1[6],p1[7])))
-        for j,p2 in enumerate(quadrangles):
-
-            p2 = Polygon(((p2[0],p2[1]),
-                         (p2[2],p2[3]),
-                         (p2[4],p2[5]),
-                         (p2[6],p2[7])))
-            try : 
-                inter = p1.intersection(p2).area
-                union = p1.area+p2.area-inter
-                iou = inter/(union+1e-5)
-                if j>i and iou>threshold:
-                    keep[j]=False
-            except : 
-                keep[j]=False
-    quadrangles = quadrangles[keep]
-    boxes = boxes[keep]
-    scores = scores[keep]
-    classes = classes[keep]
-    ratios = ratios[keep]
-    return quadrangles,boxes,scores,classes,ratios
 
 def _compute_ap(recall, precision):
     """
@@ -90,8 +56,7 @@ def _compute_ap(recall, precision):
     return ap
 
 
-
-def _get_detections(generator, model, score_threshold=0.05, max_detections=100, visualize=False,):
+def _get_detections(generator, model, score_threshold=0.05, max_detections=100, visualize=False):
     """
     Get the detections from the model using the generator.
 
@@ -115,17 +80,13 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
     for i in progressbar.progressbar(range(generator.size()), prefix='Running network: '):
         image = generator.load_image(i)
         src_image = image.copy()
-
-        anchors = generator.anchors
-        image, scale, offset_h, offset_w = generator.preprocess_image(image)
         h, w = image.shape[:2]
 
+        anchors = generator.anchors
+        image, scale = generator.preprocess_image(image)
+
         # run network
-        boxes, scores, *_, labels = model.predict([np.expand_dims(image, axis=0),
-                                                            np.expand_dims(anchors, axis=0)])
-        print(len(boxes[0]))
-        boxes[..., [0, 2]] = boxes[..., [0, 2]] - offset_w
-        boxes[..., [1, 3]] = boxes[..., [1, 3]] - offset_h
+        boxes, scores, *_, labels = model.predict_on_batch([np.expand_dims(image, axis=0)])
         boxes /= scale
         boxes[:, :, 0] = np.clip(boxes[:, :, 0], 0, w - 1)
         boxes[:, :, 1] = np.clip(boxes[:, :, 1], 0, h - 1)
@@ -169,117 +130,8 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
 
     return all_detections
 
-classes_name = ['container','oil tanker','aircraft carrier','maritime vessels']
-def _get_detections_quad(generator, model, score_threshold=0.05, max_detections=100, visualize=False,nms_threshold =0.2, colors =None):
-    """
-    Get the detections from the model using the generator.
 
-    The result is a list of lists such that the size is:
-        all_detections[num_images][num_classes] = detections[num_class_detections, 5]
-
-    Args:
-        generator: The generator used to run images through the model.
-        model: The model to run on the images.
-        score_threshold: The score confidence threshold to use.
-        max_detections: The maximum number of detections to use per image.
-        save_path: The path to save the images with visualized detections to.
-
-    Returns:
-        A list of lists containing the detections for each image in the generator.
-
-    """
-    all_detections = [[None for i in range(generator.num_classes()) if generator.has_label(i)] for j in
-                      range(generator.size())]
-
-    for i in progressbar.progressbar(range(generator.size()), prefix='Running network: '):
-        image = generator.load_image(i)
-        h, w = image.shape[:2]
-        src_image = image.copy()
-        anchors = generator.anchors
-        image, scale, offset_h, offset_w = generator.preprocess_image(image)
-        # run network
-        boxes, scores, alphas, ratios, classes = model.predict([np.expand_dims(image, axis=0),
-                                                            np.expand_dims(anchors, axis=0)])
-        
-        alphas = 1 / (1 + np.exp(-alphas))
-        ratios = 1 / (1 + np.exp(-ratios))
-        quadrangles = np.zeros(boxes.shape[:2] + (8,))
-        quadrangles[:, :, 0] = boxes[:, :, 0] + (boxes[:, :, 2] - boxes[:, :, 0]) * alphas[:, :, 0]
-        quadrangles[:, :, 1] = boxes[:, :, 1]
-        quadrangles[:, :, 2] = boxes[:, :, 2]
-        quadrangles[:, :, 3] = boxes[:, :, 1] + (boxes[:, :, 3] - boxes[:, :, 1]) * alphas[:, :, 1]
-        quadrangles[:, :, 4] = boxes[:, :, 2] - (boxes[:, :, 2] - boxes[:, :, 0]) * alphas[:, :, 2]
-        quadrangles[:, :, 5] = boxes[:, :, 3]
-        quadrangles[:, :, 6] = boxes[:, :, 0]
-        quadrangles[:, :, 7] = boxes[:, :, 3] - (boxes[:, :, 3] - boxes[:, :, 1]) * alphas[:, :, 3]
-
-        boxes[0, :, [0, 2]] = boxes[0, :, [0, 2]] - offset_w
-        boxes[0, :, [1, 3]] = boxes[0, :, [1, 3]] - offset_h
-        boxes /= scale
-        boxes[0, :, 0] = np.clip(boxes[0, :, 0], 0, w - 1)
-        boxes[0, :, 1] = np.clip(boxes[0, :, 1], 0, h - 1)
-        boxes[0, :, 2] = np.clip(boxes[0, :, 2], 0, w - 1)
-        boxes[0, :, 3] = np.clip(boxes[0, :, 3], 0, h - 1)
-
-        quadrangles[0, :, [0, 2, 4, 6]] = quadrangles[0, :, [0, 2, 4, 6]] - offset_w
-        quadrangles[0, :, [1, 3, 5, 7]] = quadrangles[0, :, [1, 3, 5, 7]] - offset_h
-        quadrangles /= scale
-        quadrangles[0, :, [0, 2, 4, 6]] = np.clip(quadrangles[0, :, [0, 2, 4, 6]], 0, w - 1) 
-        quadrangles[0, :, [1, 3, 5, 7]] = np.clip(quadrangles[0, :, [1, 3, 5, 7]], 0, h - 1) 
-
-        # select indices which have a score above the threshold
-        indices = np.where(scores[0, :] > score_threshold)[0]
-        # select those scores
-        scores = scores[0][indices]
-        # find the order with which to sort the scores
-        scores_sort = np.argsort(-scores)[:max_detections]
-        # select detections
-        image_boxes = boxes[0, indices[scores_sort]]
-        image_scores = scores[scores_sort]
-        image_classes = classes[0, indices[scores_sort]]
-        image_quadrangles = quadrangles[0, indices[scores_sort]]
-        image_ratios = ratios[0, indices[scores_sort]]
-        
-        
-        image_quadrangles, image_boxes, image_classes, image_scores,image_ratios = nms(image_quadrangles, 
-                                                                                       image_boxes, 
-                                                                                       image_classes, 
-                                                                                       image_scores, 
-                                                                                       image_ratios, 
-                                                                                       nms_threshold)
-
-
-
-        detections = np.concatenate(
-            [image_quadrangles, np.expand_dims(image_scores, axis=1), np.expand_dims(image_classes, axis=1)], axis=1)
-
-
-        if visualize:
-            for score, label, quadrangle in zip(image_scores, image_classes, image_quadrangles):
-                score = '{:.4f}'.format(score)
-                class_id = int(label)
-                color = colors[class_id]
-                class_name = classes_name[class_id]
-                label = '-'.join([class_name, score])
-                ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                #cv2.rectangle(src_image, (xmin, ymin), (xmax, ymax), color, 1)
-                #cv2.rectangle(src_image, (xmin, ymax - ret[1] - baseline), (xmin + ret[0], ymax), color, -1)
-                #cv2.putText(src_image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-                #cv2.putText(src_image, score, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-                #cv2.putText(src_image, f'{ratio:.2f}', (xmin + (xmax - xmin) // 3, (ymin + ymax) // 2),
-                #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-                cv2.drawContours(src_image, [quadrangle.astype(np.int32).reshape((4, 2))], -1, color, 3)
-            cv2.imwrite('val/img/ship{}.jpg'.format(i),src_image)
-
-
-        # copy detections to all_detections
-        for class_id in range(generator.num_classes()):
-            all_detections[i][class_id] = detections[detections[:, -1] == class_id, :-1]
-
-    return all_detections
-
-
-def _get_annotations(generator,quad=True):
+def _get_annotations(generator):
     """
     Get the ground truth annotations from the generator.
 
@@ -303,34 +155,10 @@ def _get_annotations(generator,quad=True):
         for label in range(generator.num_classes()):
             if not generator.has_label(label):
                 continue
-            if quad:
-                all_annotations[i][label] = annotations['quadrangles'][annotations['labels'] == label, :].copy()
 
-            else:
-                all_annotations[i][label] = annotations['bboxes'][annotations['labels'] == label, :].copy()
+            all_annotations[i][label] = annotations['bboxes'][annotations['labels'] == label, :].copy()
 
     return all_annotations
-
-from shapely.geometry import Polygon
-def _compute_overlap_quad(boxes,query_boxes):
-    N = boxes.shape[0]
-    K = query_boxes.shape[0]
-    overlaps = np.zeros((N, K), dtype=np.float64)
-    for n,p1 in enumerate(boxes):
-        p1 = Polygon(((p1[0],p1[1]),
-                         (p1[2],p1[3]),
-                         (p1[4],p1[5]),
-                         (p1[6],p1[7])))
-        for k,p2 in enumerate(query_boxes):
-            p2 = Polygon(((p2[0]),
-                         (p2[1]),
-                         (p2[2]),
-                         (p2[3])))  
-            inter = p1.intersection(p2).area
-            union = p1.area+p2.area-inter
-            iou = inter/(union+1e-5)
-            overlaps[n, k] = iou
-    return overlaps
 
 
 def evaluate(
@@ -340,8 +168,7 @@ def evaluate(
         score_threshold=0.01,
         max_detections=100,
         visualize=False,
-        epoch=0,
-        nms_threshold = 0.2
+        epoch=0
 ):
     """
     Evaluate a given dataset using a given model.
@@ -359,16 +186,14 @@ def evaluate(
 
     """
     # gather all detections and annotations
-    colors = [np.random.randint(100, 256, 3).tolist() for i in range(generator.num_classes())]
-    all_detections = _get_detections_quad(generator, model, score_threshold=score_threshold, max_detections=max_detections,
-                                     visualize=visualize,nms_threshold=nms_threshold, colors=colors)
-    all_annotations = _get_annotations(generator,quad=True)
+    all_detections = _get_detections(generator, model, score_threshold=score_threshold, max_detections=max_detections,
+                                     visualize=visualize)
+    all_annotations = _get_annotations(generator)
     average_precisions = {}
     num_tp = 0
     num_fp = 0
-    tot_ap=[]
+
     # process detections and annotations
-    
     for label in range(generator.num_classes()):
         if not generator.has_label(label):
             continue
@@ -391,12 +216,11 @@ def evaluate(
                     false_positives = np.append(false_positives, 1)
                     true_positives = np.append(true_positives, 0)
                     continue
-                overlaps = _compute_overlap_quad(np.expand_dims(d, axis=0).astype(np.double), annotations.astype(np.double))
+                overlaps = compute_overlap(np.expand_dims(d, axis=0), annotations)
                 assigned_annotation = np.argmax(overlaps, axis=1)
                 max_overlap = overlaps[0, assigned_annotation]
 
                 if max_overlap >= iou_threshold and assigned_annotation not in detected_annotations:
-                #if max_overlap >= iou_threshold :
                     false_positives = np.append(false_positives, 0)
                     true_positives = np.append(true_positives, 1)
                     detected_annotations.append(assigned_annotation)

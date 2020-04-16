@@ -1,4 +1,3 @@
-#-*- coding: future_fstrings -*-
 """
 Copyright 2017-2018 Fizyr (https://fizyr.com)
 
@@ -14,13 +13,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-    
+
 import argparse
 from datetime import date
 import os
 import sys
 import tensorflow as tf
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # import keras
 # import keras.preprocessing.image
@@ -36,8 +34,6 @@ from augmentor.misc import MiscEffect
 from model import efficientdet
 from losses import smooth_l1, focal, smooth_l1_quad
 from efficientnet import BASE_WEIGHTS_PATH, WEIGHTS_HASHES
-from utils.anchors import AnchorParameters
-
 
 
 def makedirs(path):
@@ -55,40 +51,9 @@ def get_session():
     """
     Construct a modified tf session.
     """
-    config =  tf.compat.v1.ConfigProto()
+    config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-    return tf.compat.v1.InteractiveSession(config=config)
-
-class LearningRateScheduler(tf.keras.callbacks.Callback):
-    """Learning rate scheduler which sets the learning rate according to schedule.
-
-    Arguments:
-      schedule: a function that takes an epoch index
-          (integer, indexed from 0) and current learning rate
-          as inputs and returns a new learning rate as output (float).
-    """
-
-    def __init__(self, schedule):
-        super(LearningRateScheduler, self).__init__()
-        self.schedule = schedule
-
-    def on_epoch_begin(self, epoch, logs=None):
-        if not hasattr(self.model.optimizer, 'lr'):
-            raise ValueError('Optimizer must have a "lr" attribute.')
-        # Get the current learning rate from model's optimizer.
-        lr = float(tf.keras.backend.get_value(self.model.optimizer.lr))
-        # Call schedule function to get the scheduled learning rate.
-        scheduled_lr = self.schedule(epoch)
-        # Set the value back to the optimizer before this epoch starts
-        tf.keras.backend.set_value(self.model.optimizer.lr, scheduled_lr)
-        print('\nEpoch %05d: Learning rate is %6.8f.' % (epoch, scheduled_lr))
-
-def scheduler(epoch):
-    if epoch < 10:
-        return 0.001
-    else:
-        return 0.001 * 0.95 ** epoch
-
+    return tf.Session(config=config)
 
 
 def create_callbacks(training_model, prediction_model, validation_generator, args):
@@ -109,7 +74,10 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     tensorboard_callback = None
 
     if args.tensorboard_dir:
-        tensorboard_callback = tf.compat.v1.keras.callbacks.TensorBoard(
+        if tf.version.VERSION > '2.0.0':
+            file_writer = tf.summary.create_file_writer(args.tensorboard_dir)
+            file_writer.set_as_default()
+        tensorboard_callback = keras.callbacks.TensorBoard(
             log_dir=args.tensorboard_dir,
             histogram_freq=0,
             batch_size=args.batch_size,
@@ -143,13 +111,12 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
                 else f'{args.dataset_type}_{{epoch:02d}}_{{loss:.4f}}.h5'
             ),
             verbose=1,
+            save_weights_only=True,
             # save_best_only=True,
             # monitor="mAP",
             # mode='max'
         )
         callbacks.append(checkpoint)
-        lrschedule = LearningRateScheduler(scheduler)
-        callbacks.append(lrschedule)
 
     # callbacks.append(keras.callbacks.ReduceLROnPlateau(
     #     monitor='loss',
@@ -177,8 +144,7 @@ def create_generators(args):
         'batch_size': args.batch_size,
         'phi': args.phi,
         'detect_text': args.detect_text,
-        'detect_ship': args.detect_ship,
-        'detect_quadrangle': args.detect_quadrangle,
+        'detect_quadrangle': args.detect_quadrangle
     }
 
     # create random transform generator for augmenting training data
@@ -244,32 +210,6 @@ def create_generators(args):
             shuffle_groups=False,
             **common_args
         )
-    elif args.dataset_type == 'ship':
-        # import here to prevent unnecessary dependency on cocoapi
-        from generators.ship import ShipGenerator
-        train_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/train_data_1280.tfrecords'
-        #val_dir = '/home/minjun/Jupyter/Ship_Detection/Data/tfrecorder/val_data_1280.tfrecords'
-        train_generator = ShipGenerator(
-            'train/ship_detection',
-            train_dir,
-            gen_type='train',
-            ratio = args.train_ratio,
-            misc_effect=misc_effect,
-            selection = False,
-            **common_args
-        )
-#group_method='random',        
-#misc_effect=misc_effect,
-#visual_effect=visual_effect,
-
-        validation_generator = ShipGenerator(
-            'val/ship_detection',
-            train_dir,
-            gen_type='val',
-            ratio = 1-args.train_ratio,
-            selection = False,
-            **common_args
-        )
     else:
         raise ValueError('Invalid data type received: {}'.format(args.dataset_type))
 
@@ -288,16 +228,12 @@ def check_args(parsed_args):
     Returns
         parsed_args
     """
-    
+
     if parsed_args.gpu and parsed_args.batch_size < len(parsed_args.gpu.split(',')):
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
-                                                                                             len(parsed_args.gpu.split(','))))
-    # if parsed_args.num_gpus > 1 and parsed_args.snapshot:
-    #     raise ValueError(
-    #         "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
-    #                                                                                             parsed_args.snapshot))
-
+                                                                                             len(parsed_args.gpu.split(
+                                                                                                 ','))))
 
     return parsed_args
 
@@ -322,14 +258,8 @@ def parse_args(args):
     csv_parser.add_argument('classes_path', help='Path to a CSV file containing class label mapping.')
     csv_parser.add_argument('--val-annotations-path',
                             help='Path to CSV file containing annotations for validation (optional).')
-    
-    ship_parser = subparsers.add_parser('ship')
-    ship_parser.add_argument('ship_path', help='Path to tfrecord file', default=None)
-    ship_parser.add_argument('train_ratio', help='train raitio' , type=float, default=0.8)
-        
     parser.add_argument('--detect-quadrangle', help='If to detect quadrangle.', action='store_true', default=False)
     parser.add_argument('--detect-text', help='If is text detection task.', action='store_true', default=False)
-    parser.add_argument('--detect-ship', help='If is ship detection task.', action='store_true', default=False)
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.')
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
@@ -358,7 +288,6 @@ def parse_args(args):
     parser.add_argument('--workers', help='Number of generator workers.', type=int, default=1)
     parser.add_argument('--max-queue-size', help='Queue length for multiprocessing workers in fit_generator.', type=int,
                         default=10)
-
     print(vars(parser.parse_args(args)))
     return check_args(parser.parse_args(args))
 
@@ -379,66 +308,53 @@ def main(args=None):
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    #tf.compat.v1.keras.backend.set_session(get_session())
-    
-    if args.detect_ship == True : 
-        anchor_parameters=AnchorParameters.ship
-    else : 
-        anchor_parameters=None
-    
-    devices=["/gpu:{}".format(i) for i in args.gpu.split(',')] 
-    mirrored_strategy = tf.distribute.MirroredStrategy(devices=devices)
-    with mirrored_strategy.scope():
-        model, prediction_model = efficientdet(args.phi,
-                                               num_classes=num_classes,
-                                               num_anchors=num_anchors,
-                                               weighted_bifpn=args.weighted_bifpn,
-                                               freeze_bn=args.freeze_bn,
-                                               detect_quadrangle=args.detect_quadrangle,
-                                               anchor_parameters=anchor_parameters,
-                                               )
-        # load pretrained weights
-        if args.snapshot:
-            if args.snapshot == 'imagenet':
-                model_name = 'efficientnet-b{}'.format(args.phi)
-                file_name = '{}_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'.format(model_name)
-                file_hash = WEIGHTS_HASHES[model_name][1]
-                weights_path = keras.utils.get_file(file_name,
-                                                    BASE_WEIGHTS_PATH + file_name,
-                                                    cache_subdir='models',
-                                                    file_hash=file_hash)
-                model.load_weights(weights_path, by_name=True)
-            else:
-                print('Loading model, this may take a second...')
-                model.load_weights(args.snapshot, by_name=True)
+    # K.set_session(get_session())
 
-        # freeze backbone layers
-        if args.freeze_backbone:
-            # 227, 329, 329, 374, 464, 566, 656
-            for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
-                model.layers[i].trainable = False
-        #else :
-        #    for i in range(1, [227, 329, 329, 374, 464, 566, 656][3]):
-        #        model.layers[i].trainable = False
-        
-        model.compile(optimizer=Adam(lr=1e-3), loss={
-            'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
-            'classification': focal()
-        }, )
-        for i in range([227, 329, 329, 374, 464, 566, 656][args.phi], len(model.layers)):
-            # 'kernel_regularizer' 속성이 있는 인스턴스를 찾아 regularizer를 추가
-            if hasattr(model.layers[i], 'kernel_regularizer'):
-                setattr(model.layers[i], 'kernel_regularizer', tf.keras.regularizers.l2(l=0.0001))
+    model, prediction_model = efficientdet(args.phi,
+                                           num_classes=num_classes,
+                                           num_anchors=num_anchors,
+                                           weighted_bifpn=args.weighted_bifpn,
+                                           freeze_bn=args.freeze_bn,
+                                           detect_quadrangle=args.detect_quadrangle
+                                           )
+    # load pretrained weights
+    if args.snapshot:
+        if args.snapshot == 'imagenet':
+            model_name = 'efficientnet-b{}'.format(args.phi)
+            file_name = '{}_weights_tf_dim_ordering_tf_kernels_autoaugment_notop.h5'.format(model_name)
+            file_hash = WEIGHTS_HASHES[model_name][1]
+            weights_path = keras.utils.get_file(file_name,
+                                                BASE_WEIGHTS_PATH + file_name,
+                                                cache_subdir='models',
+                                                file_hash=file_hash)
+            model.load_weights(weights_path, by_name=True)
+        else:
+            print('Loading model, this may take a second...')
+            model.load_weights(args.snapshot, by_name=True)
 
-        
-        #print(model.summary())
+    # freeze backbone layers
+    if args.freeze_backbone:
+        # 227, 329, 329, 374, 464, 566, 656
+        for i in range(1, [227, 329, 329, 374, 464, 566, 656][args.phi]):
+            model.layers[i].trainable = False
 
-        # create the callbacks
+    if args.gpu and len(args.gpu.split(',')) > 1:
+        model = keras.utils.multi_gpu_model(model, gpus=list(map(int, args.gpu.split(','))))
+
+    # compile model
+    model.compile(optimizer=Adam(lr=1e-3), loss={
+        'regression': smooth_l1_quad() if args.detect_quadrangle else smooth_l1(),
+        'classification': focal()
+    }, )
+
+    # print(model.summary())
+
+    # create the callbacks
     callbacks = create_callbacks(
         model,
         prediction_model,
-        None,
-        args
+        validation_generator,
+        args,
     )
 
     if not args.compute_val_loss:
@@ -446,24 +362,19 @@ def main(args=None):
     elif args.compute_val_loss and validation_generator is None:
         raise ValueError('When you have no validation data, you should not specify --compute-val-loss.')
 
-    if args.snapshot == 'imagenet' : initial_epoch = 0
-    else: initial_epoch = int(args.snapshot.split('_')[1])
-    return model.fit(
-        train_generator,
-        initial_epoch=initial_epoch,
+    # start training
+    return model.fit_generator(
+        generator=train_generator,
         steps_per_epoch=args.steps,
+        initial_epoch=0,
         epochs=args.epochs,
-        verbose=1,    
+        verbose=1,
         callbacks=callbacks,
         workers=args.workers,
+        use_multiprocessing=args.multiprocessing,
         max_queue_size=args.max_queue_size,
-        validation_data=validation_generator,
-        validation_steps = args.steps//20
-        )
-
-# validation_steps = args.steps//10
-# use_multiprocessing=args.multiprocessing,
-    
+        validation_data=validation_generator
+    )
 
 
 if __name__ == '__main__':

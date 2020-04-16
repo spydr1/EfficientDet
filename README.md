@@ -1,13 +1,19 @@
 # EfficientDet
-This is an implementation of [EfficientDet](https://arxiv.org/pdf/1911.09070.pdf) for object detection on Keras and Tensorflow. The project is based on [fizyr/keras-retinanet](https://github.com/fizyr/keras-retinanet)
+This is an implementation of [EfficientDet](https://arxiv.org/pdf/1911.09070.pdf) for object detection on Keras and Tensorflow. 
+The project is based on the official implementation [google/automl](https://github.com/google/automl), [fizyr/keras-retinanet](https://github.com/fizyr/keras-retinanet)
 and the [qubvel/efficientnet](https://github.com/qubvel/efficientnet). 
-The pretrained EfficientNet weights files are downloaded from [Callidior/keras-applications/releases](https://github.com/Callidior/keras-applications/releases)
+
+## About pretrained weights
+* The pretrained EfficientNet weights on imagenet are downloaded from [Callidior/keras-applications/releases](https://github.com/Callidior/keras-applications/releases)
+* The pretrained EfficientDet weights on coco are converted from the official release [google/automl](https://github.com/google/automl).
 
 Thanks for their hard work.
 This project is released under the Apache License. Please take their licenses into consideration too when use this project.
 
 **Updates**
-- [Feb 2020] Support quadrangle detection. For details, please refer to [README_quad](README_quad.md)
+- [03/21/2020] Synchronize with the official implementation. [google/automl](https://github.com/google/automl)
+- [03/05/2020] Anchor free version. The accuracy is a little lower, but it's faster and smaller.For details, please refer to [xuannianz/SAPD](https://github.com/xuannianz/SAPD)
+- [02/20/2020] Support quadrangle detection. For details, please refer to [README_quad](README_quad.md)
 
 ## Train
 ### build dataset 
@@ -33,9 +39,16 @@ This project is released under the Apache License. Please take their licenses in
     | w/ weighted | [0.7892](https://drive.google.com/open?id=1mrqL9rFoYW-4Jc57MsTipkvOTRy_EGfe) |  |
 2. MSCOCO
     * `python3 eval/coco.py` to evaluate coco model by specifying model path there.
+    
+    | phi | mAP |
+    | ---- | ---- |
+    | 0 | 0.334 [weights](https://drive.google.com/open?id=1MNB5q6rJ4TK_gen3iriu8-ArG9jB8aR9), [results](https://drive.google.com/open?id=1U4Bdk4C7aNF7l4mvhh2Oi8mFpttEwB8s) |
+    | 1 | 0.393 [weights](https://drive.google.com/open?id=11pQznCTi4MaVXqkJmCMcQhphMXurpx5Z), [results](https://drive.google.com/open?id=1NjGr3yG3_Rk1xVCk4sgVelTZNNz_E2vp) |
+    | 2 | 0.424 [weights](https://drive.google.com/open?id=1_yXrOrY0FDnH-d_FQIPbGy4z2ax4aNh8), [results](https://drive.google.com/open?id=1UQP8kDj7tXHC2bs--Aq8x7w7FkVX4xJD) |
+    | 3 | 0.454 [weights](https://drive.google.com/open?id=1VnxoBpEQmm0Z2uO3gjhYDeu-rNirba6c), [results](https://drive.google.com/open?id=1uruTEMPhl_JvbA_T9kCdutzeOR3gFX4g) |
+    | 4 | 0.483 [weights](https://drive.google.com/open?id=1lQvTpnO_mfkHCRpcP28dxU4CWyK3xUzj), [results](https://drive.google.com/open?id=1s4nmgYaPqjbAgDlRF1AVVz6uWKDz7O_i) |
+    
 ## Test
 `python3 inference.py` to test your image by specifying image path and model path there. 
 
-![image1](test/000004.jpg) 
-![image2](test/000010.jpg)
-![image3](test/000014.jpg)
+![image1](test/demo.jpg) 
